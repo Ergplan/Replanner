@@ -71,6 +71,9 @@ on screen. Near-zero flows are hidden rather than drawn faint.
 
 `docs/assumptions.md` lists what is supported, what is not, and the judgement calls.
 `docs/operations.md` has setup, commands and measured performance.
+`docs/isometric-design-system.md` is a self-contained brief for rebuilding the isometric
+UI from nothing — projection maths, the primitives in full, drawing and motion rules, the
+collision sweep, and the mistakes already paid for.
 
 ## Quick start
 
