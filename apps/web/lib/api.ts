@@ -41,7 +41,8 @@ export type ProjectMeta = {
   project_id: string; name: string; timezone: string; currency: string;
   provenance: string; illustrative_only: boolean;
   site: Record<string, number>;
-  options: Record<string, { min_mw: number; max_mw: number; technology: string; route: string }>;
+  options: Record<string, { min_mw: number; max_mw: number; step_mw: number | null;
+    enabled: boolean; technology: string; route: string }>;
   battery: { min_power_mw: number; max_power_mw: number; min_energy_mwh: number;
     max_energy_mwh: number; max_c_rate: number };
   tariff: { contract_demand_mw: number; demand_basis: string; duty_frac: number };

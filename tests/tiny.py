@@ -63,9 +63,10 @@ def battery(power=1.0, energy=4.0, eta_c=1.0, eta_d=1.0, wear=0.0, annuity_mw=0.
 
 
 def solar(profile, cap_max=10.0, annuity=0.0, loss=0.0, existing=0.0,
-          key="pv", cap_key="solar_onsite_mw", wheeled=False, vom=0.0) -> GenSpec:
+          key="pv", cap_key="solar_onsite_mw", wheeled=False, vom=0.0,
+          cap_min=0.0, step=None) -> GenSpec:
     return GenSpec(key=key, route="onsite", cap_key=cap_key,
                    profile=np.asarray(profile, dtype=float), delivery_factor=1.0 - loss,
-                   existing_mw=existing, min_mw=0.0, max_mw=cap_max,
+                   existing_mw=existing, min_mw=cap_min, max_mw=cap_max,
                    annuity_inr_per_mw_year=annuity, fixed_om_inr_per_mw_year=0.0,
-                   variable_om_inr_per_mwh=vom, wheeled=wheeled)
+                   variable_om_inr_per_mwh=vom, wheeled=wheeled, step_mw=step)

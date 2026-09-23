@@ -23,6 +23,7 @@ from ..schemas.results import CapacityResult, CostLedger, ValidationIssue, Valid
 from ..ingestion import expected_blocks
 from ..optimization.run import SIMUL_TOL_MW
 from ..optimization.spec import RunSpec
+from ..optimization.supported import CAP_TOL_MW, off_grid_mw
 
 
 @dataclass
@@ -123,6 +124,30 @@ def certify(spec: RunSpec, caps: CapacityResult, dispatch: pd.DataFrame, ledger:
     soc_end = col("soc_end_mwh")
     soc_start = np.roll(soc_end, 1)
     aux = col("aux_mw")
+
+    # ---- 1b. capacities are ones the option allows ----------------------------------
+    checks.append("capacity_bounds")
+    bounds = [(g.cap_key, getattr(caps, g.cap_key), g.min_mw, g.max_mw)
+              for g in spec.generation]
+    bat_hi = (spec.battery.max_mw, spec.battery.max_mwh) if spec.battery.enabled else (0.0, 0.0)
+    bounds += [("bess_power_mw", caps.bess_power_mw, spec.battery.min_mw, bat_hi[0]),
+               ("bess_energy_mwh", caps.bess_energy_mwh, spec.battery.min_mwh, bat_hi[1])]
+    for key, v, lo, hi in bounds:
+        excess = max(lo - v, v - hi, 0.0)
+        maxres[f"bounds_{key}"] = float(excess)
+        if excess > CAP_TOL_MW:
+            issues.append(_issue(f"bounds_{key}", excess, CAP_TOL_MW, "MW/MWh",
+                                 f"{key} = {v} is outside the option's range [{lo}, {hi}]"))
+    stepped = [g for g in spec.generation if g.step_mw is not None]
+    if stepped:
+        checks.append("discrete_sizes")
+    for g in stepped:
+        off = off_grid_mw(getattr(caps, g.cap_key), g.step_mw)
+        maxres[f"step_{g.cap_key}"] = float(off)
+        if off > CAP_TOL_MW:
+            issues.append(_issue(f"step_{g.cap_key}", off, CAP_TOL_MW, "MW",
+                                 f"{g.cap_key} = {getattr(caps, g.cap_key)} is not a whole "
+                                 f"multiple of {g.step_mw} MW"))
 
     # ---- 2. renewable accounting, recomputed from capacity and profile ----------------
     checks.append("renewable_accounting")

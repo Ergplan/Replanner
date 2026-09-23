@@ -54,7 +54,8 @@ def project(year: int = 2026):
     here rather than hardcoding them, so the backend stays the authority."""
     from project import seeded_project
     inp = seeded_project(year)
-    caps = {o.option_id: {"min_mw": o.min_mw, "max_mw": o.max_mw,
+    caps = {o.option_id: {"min_mw": o.min_mw, "max_mw": o.max_mw, "step_mw": o.step_mw,
+                          "enabled": o.enabled,
                           "technology": o.technology, "route": o.route.value}
             for o in inp.asset_options}
     b = inp.battery

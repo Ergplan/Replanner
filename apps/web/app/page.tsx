@@ -209,12 +209,24 @@ export default function Page() {
     submitted.current = null;     // a message about the scenario we just left is noise
   };
 
+  // The backend refuses a manual size outside an option's range or off its unit grid, so
+  // the slider offers exactly the sizes it will accept. Without a unit size the step is
+  // only slider resolution.
+  const optBounds = (id: string, fallbackMax: number, resolution: number):
+      [number, number, number] => {
+    const o = meta?.options?.[id];
+    if (o && !o.enabled) return [0, 0, resolution];
+    const step = o?.step_mw ?? resolution;
+    const lo = o?.step_mw ? Math.ceil(o.min_mw / step - 1e-9) * step : o?.min_mw ?? 0;
+    const hi = o?.step_mw ? Math.floor(o.max_mw / step + 1e-9) * step : o?.max_mw ?? fallbackMax;
+    return [lo, hi, step];
+  };
   const capBounds: Record<CapKey, [number, number, number]> = {
-    solar_onsite_mw: [0, meta?.options?.solar_roof?.max_mw ?? 8, 0.25],
-    solar_remote_mw: [0, meta?.options?.solar_oa?.max_mw ?? 60, 0.5],
-    wind_remote_mw: [0, meta?.options?.wind_oa?.max_mw ?? 60, 0.5],
-    bess_power_mw: [0, meta?.battery?.max_power_mw ?? 25, 0.25],
-    bess_energy_mwh: [0, meta?.battery?.max_energy_mwh ?? 120, 1],
+    solar_onsite_mw: optBounds('solar_roof', 8, 0.25),
+    solar_remote_mw: optBounds('solar_oa', 60, 0.5),
+    wind_remote_mw: optBounds('wind_oa', 60, 0.5),
+    bess_power_mw: [meta?.battery?.min_power_mw ?? 0, meta?.battery?.max_power_mw ?? 25, 0.25],
+    bess_energy_mwh: [meta?.battery?.min_energy_mwh ?? 0, meta?.battery?.max_energy_mwh ?? 120, 1],
   };
   const capLabel: Record<CapKey, string> = {
     solar_onsite_mw: 'Rooftop solar, behind the meter',

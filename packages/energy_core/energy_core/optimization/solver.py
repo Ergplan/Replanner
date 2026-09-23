@@ -39,6 +39,7 @@ class SolveOutcome:
     n_variables: int
     n_constraints: int
     n_binaries: int
+    n_integers: int = 0            # general integers, binaries excluded
     solver: str = "HiGHS"
     solver_version: str = ""
     message: str = ""
@@ -57,14 +58,16 @@ def _version(opt) -> str:
     return ".".join(str(x) for x in v) if isinstance(v, (tuple, list)) else str(v)
 
 
-def _count(model) -> tuple[int, int, int]:
-    nv = nb = 0
+def _count(model) -> tuple[int, int, int, int]:
+    nv = nb = ni = 0
     for v in model.component_data_objects(pyo.Var, active=True):
         nv += 1
         if v.is_binary():
             nb += 1
+        elif v.is_integer():
+            ni += 1
     nc = sum(1 for _ in model.component_data_objects(pyo.Constraint, active=True))
-    return nv, nc, nb
+    return nv, nc, nb, ni
 
 
 def solve(model, *, time_limit_s: float | None = 900.0, mip_gap: float = 1e-4,
@@ -81,7 +84,7 @@ def solve(model, *, time_limit_s: float | None = 900.0, mip_gap: float = 1e-4,
     t0 = time.perf_counter()
     res = opt.solve(model)
     wall = time.perf_counter() - t0
-    nv, nc, nb = _count(model)
+    nv, nc, nb, ni = _count(model)
 
     status = _STATUS.get(res.termination_condition, SolveStatus.FAILED)
     obj = bound = gap = None
@@ -91,17 +94,18 @@ def solve(model, *, time_limit_s: float | None = 900.0, mip_gap: float = 1e-4,
             obj = float(pyo.value(model.obj))
         except Exception as exc:                       # no feasible incumbent to load
             return SolveOutcome(SolveStatus.FAILED, str(res.termination_condition), None, None,
-                                None, wall, nv, nc, nb, message=f"no loadable solution: {exc}")
+                                None, wall, nv, nc, nb, ni,
+                                message=f"no loadable solution: {exc}")
         bound = (float(res.best_objective_bound)
                  if res.best_objective_bound is not None else None)
         if bound is not None and obj is not None and abs(obj) > 1e-9:
             gap = abs(obj - bound) / max(abs(obj), 1e-9)
-        elif nb == 0:
+        elif nb == 0 and ni == 0:
             gap = 0.0                                   # an LP solved to optimality has no gap
 
     return SolveOutcome(
         status=status, termination=str(res.termination_condition), objective=obj,
         best_bound=bound, gap=gap, wall_seconds=wall,
-        n_variables=nv, n_constraints=nc, n_binaries=nb,
+        n_variables=nv, n_constraints=nc, n_binaries=nb, n_integers=ni,
         solver_version=_version(opt),
         message="" if status is SolveStatus.SUCCEEDED else str(res.termination_condition))

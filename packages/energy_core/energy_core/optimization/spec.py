@@ -37,6 +37,7 @@ class GenSpec:
     fixed_om_inr_per_mw_year: float
     variable_om_inr_per_mwh: float
     wheeled: bool                  # does the open-access charge stack apply?
+    step_mw: float | None = None   # new capacity comes in whole multiples of this
 
 
 @dataclass
@@ -130,7 +131,10 @@ class RunSpec:
             h.update(np.ascontiguousarray(arr, dtype=np.float64).tobytes())
         for g in self.generation:
             h.update(np.ascontiguousarray(g.profile, dtype=np.float64).tobytes())
-            h.update(json.dumps({k: v for k, v in g.__dict__.items() if k != "profile"},
+            # An unset optional field does not change the problem, so it must not change
+            # the fingerprint and orphan runs saved before the field existed.
+            h.update(json.dumps({k: v for k, v in g.__dict__.items()
+                                 if k != "profile" and v is not None},
                                 sort_keys=True, default=str).encode())
         h.update(json.dumps(self.battery.__dict__, sort_keys=True, default=str).encode())
         h.update(json.dumps({
@@ -207,6 +211,7 @@ def build_spec(inputs: ProjectInputs, frame: pd.DataFrame, operating_year: int,
             fixed_om_inr_per_mw_year=opt.fixed_om_inr_per_mw_year,
             variable_om_inr_per_mwh=opt.variable_om_inr_per_mwh,
             wheeled=opt.route.value == "open_access",
+            step_mw=opt.step_mw if opt.enabled else None,
         ))
 
     b = inputs.battery

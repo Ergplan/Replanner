@@ -35,7 +35,6 @@ def test_the_seeded_project_is_supported():
     (lambda p: p.expansion.append(ExpansionPhase(phase_id="ph2", commissioning=date(2026, 6, 1),
                                                  load_scale_factor=1.2)), "expansion"),
     (lambda p: setattr(p.open_access, "banking_enabled", True), "banking"),
-    (lambda p: setattr(p.asset_options[0], "step_mw", 0.5), "step_mw"),
     (lambda p: setattr(p.existing_assets[0], "retires", date(2026, 9, 30)), "retires"),
     (lambda p: setattr(p.existing_assets[0], "commissioned", date(2026, 3, 1)), "commissioned"),
     (lambda p: setattr(p.asset_options[2], "technology", "solar_onsite"), "share technology"),

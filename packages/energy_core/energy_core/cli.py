@@ -46,6 +46,7 @@ def cmd_optimise(a) -> int:
         "variables": art.outcome.n_variables,
         "constraints": art.outcome.n_constraints,
         "binaries": art.outcome.n_binaries,
+        "integers": art.outcome.n_integers,
         "refinement_rounds": art.refinement_rounds,
         "input_fingerprint": spec.fingerprint(),
         "model_version": MODEL_VERSION,

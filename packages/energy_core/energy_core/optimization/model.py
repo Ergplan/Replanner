@@ -19,6 +19,7 @@ import pyomo.environ as pyo
 
 from ..schemas.common import Mode
 from .spec import RunSpec
+from .supported import unit_range
 
 
 @dataclass
@@ -79,6 +80,17 @@ def build_model(spec: RunSpec, *, force_binary_blocks: list[int] | None = None,
             return (v, v)
         return (g.min_mw, g.max_mw)
     m.cap = pyo.Var(m.G, bounds=cap_bounds, domain=pyo.NonNegativeReals)
+
+    # Discrete sizes: new capacity is a whole number of units. Mode B pins capacity to a
+    # value already checked to be on the grid, so it needs no integers and stays an LP.
+    stepped = [g.key for g in gens if g.step_mw is not None and not fixed]
+    if stepped:
+        m.S = pyo.Set(initialize=stepped, ordered=True)
+        m.units = pyo.Var(m.S, domain=pyo.NonNegativeIntegers,
+                          bounds=lambda _m, k: unit_range(gmap[k].min_mw, gmap[k].max_mw,
+                                                          gmap[k].step_mw))
+        m.unit_size = pyo.Constraint(
+            m.S, rule=lambda _m, k: _m.cap[k] == gmap[k].step_mw * _m.units[k])
 
     bp_b = ((float(fc.get("bess_power_mw", 0.0)),) * 2 if fixed
             else (bat.min_mw, bat.max_mw if bat.enabled else 0.0))

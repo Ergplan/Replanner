@@ -67,6 +67,13 @@ wires, `Σ_wheeled u_{g,t} + i^u_t + i^x_t ≤ Ī · g_t`.
 Months are local calendar months — which is why the canonical index spans a local year
 (`ingestion/chronology.py`).
 
+**Discrete sizes.** For an option with a unit size `s_g`, `C_g = s_g · k_g` with `k_g`
+a non-negative integer in `[⌈min/s_g⌉, ⌊max/s_g⌋]`. Only Mode A carries `k_g`; Mode B
+fixes `C_g` directly, on a value the input check has already put on the grid. A MIP solve
+stops at `mip_gap`, so a stepped Mode A result is `certified` only when the reported gap
+is at most 1e-6. Otherwise it is `certified_incumbent`: feasible and fully checked, but
+not proven optimal.
+
 **Prohibited simultaneity.** Binaries with declared constant big-M values, added only on
 blocks where prices could reward the behaviour, then checked on every block by the
 validator and fed back if anything is found. No product of an investment variable and a
@@ -83,7 +90,9 @@ no bilinear `capacity × endogenous SOH` product is formed.
 ## Certification — `validation/certify.py`
 
 The validator recomputes all of the above from the immutable `RunSpec` and the exported
-decisions, block by block, and reconciles its own total against the solver objective. It
+decisions, block by block, and reconciles its own total against the solver objective.
+Capacities are checked too: each one within its option's range and, where the option has
+a unit size, within 1e-6 MW of a whole number of units. It
 never reads the solver's constraint residuals: those only prove the solver satisfied the
 constraints it was given, which cannot catch a constraint written incorrectly, a unit
 converted twice, or a cost never added to the objective.

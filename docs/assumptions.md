@@ -17,6 +17,9 @@ the order in force before quoting anything.
 - Retail time-of-day energy rates, effective-dated; monthly demand charges on a measured
   peak with an optional ratchet; kVA billing at a declared power factor; electricity duty.
 - Exchange purchase against an uploaded forecast series, including negative prices.
+- Discrete equipment sizes for generation (`AssetOption.step_mw`): new capacity is a whole
+  number of units, which makes Mode A a MILP. Mode B pins capacity to a size already
+  checked to be on the grid, so it stays an LP. Battery power and energy are continuous.
 - Storage with one-way efficiencies, SOC bounds, C-rate, auxiliaries, self-discharge, a
   cyclic terminal rule, and throughput-priced wear.
 - Independent full-resolution certification, and a diagnostic relaxation that locates
@@ -38,7 +41,8 @@ job, and every problem is reported at once.
   unlimited free storage, so it is rejected.
 - Monetising degradation through modelled replacement or augmentation cash flows. Only
   the throughput-wear approximation is implemented.
-- Discrete equipment sizes (`AssetOption.step_mw`).
+- A `step_mw` for which no whole number of units lies between the option's `min_mw` and
+  `max_mw`.
 - Existing plant that is commissioned after the operating year starts, or retires within
   or before it. A retirement date after the year is accepted, since it changes nothing.
 - Two asset options of the same technology. Capacities are reported per technology, so
@@ -47,8 +51,11 @@ job, and every problem is reported at once.
   profile; without one the plant's energy would be dropped while its O&M was still charged.
   An option that is present but disabled still supplies the profile — it just cannot buy
   more.
-- Mode B capacities under a key that is not one of the five capacity names, negative, or
-  non-zero for a technology no enabled option can build.
+- Mode B capacities under a key that is not one of the five capacity names, negative,
+  non-zero for a technology no enabled option can build, outside the option's
+  `[min_mw, max_mw]`, or off its `step_mw` grid. A manual scenario must be one Mode A was
+  allowed to choose; otherwise it can undercut the certified optimum and the premium
+  stops meaning anything. A key left out is fixed at zero, so it is checked at zero.
 
 ## Judgement calls worth knowing about
 
