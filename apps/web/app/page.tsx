@@ -205,7 +205,8 @@ export default function Page() {
   const resetToOptimum = () => {
     if (!baseline) return;
     setCaps(Object.fromEntries(CAP_KEYS.map((k) => [k, num0(baseline.capacities[k])])) as Record<CapKey, number>);
-    setShown(baseline); setStale(false); setJob(null); submitted.current = null;
+    setShown(baseline); setStale(false); setJob(null); setErr(null);
+    submitted.current = null;     // a message about the scenario we just left is noise
   };
 
   const capBounds: Record<CapKey, [number, number, number]> = {
