@@ -20,9 +20,6 @@ import pyomo.environ as pyo
 from ..schemas.common import Mode
 from .spec import RunSpec
 
-CAP_KEYS = ("solar_onsite_mw", "solar_remote_mw", "wind_remote_mw",
-            "bess_power_mw", "bess_energy_mwh")
-
 
 @dataclass
 class BuildInfo:

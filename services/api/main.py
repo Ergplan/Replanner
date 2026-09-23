@@ -21,13 +21,11 @@ sys.path.insert(0, str(ROOT / "packages" / "energy_core"))
 sys.path.insert(0, str(ROOT / "datasets" / "synthetic"))
 
 import jobs as J  # noqa: E402
+from energy_core.optimization.supported import unsupported_input_problems  # noqa: E402
 
 app = FastAPI(title="Least-cost energy digital twin", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3210"],
                    allow_methods=["*"], allow_headers=["*"])
-
-CAP_KEYS = ("solar_onsite_mw", "solar_remote_mw", "wind_remote_mw",
-            "bess_power_mw", "bess_energy_mwh")
 
 
 class ScenarioRequest(BaseModel):
@@ -149,14 +147,16 @@ def daily(run_id: str):
 
 @app.post("/scenarios")
 def submit(req: ScenarioRequest):
-    if req.mode == "manual":
-        if not req.capacities:
-            raise HTTPException(400, "a manual scenario must carry capacities")
-        unknown = set(req.capacities) - set(CAP_KEYS)
-        if unknown:
-            raise HTTPException(400, f"unknown capacity keys: {sorted(unknown)}")
-        if any(v < 0 for v in req.capacities.values()):
-            raise HTTPException(400, "capacities cannot be negative")
+    if req.mode == "manual" and not req.capacities:
+        raise HTTPException(400, "a manual scenario must carry capacities")
+    # The worker runs the same check; running it here turns a job that would fail
+    # minutes later into an immediate, readable refusal.
+    from project import seeded_project
+    problems = unsupported_input_problems(
+        seeded_project(req.year), req.year,
+        fixed_capacities=req.capacities if req.mode == "manual" else None)
+    if problems:
+        raise HTTPException(400, {"unsupported_inputs": problems})
     job = J.new_job(req.project_id, req.mode, req.year, req.capacities, req.baseline_run_id)
     return {"job_id": job.job_id, "status": job.status}
 

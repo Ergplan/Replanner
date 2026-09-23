@@ -24,7 +24,10 @@ the order in force before quoting anything.
 
 ## Not supported in this release
 
-These **fail validation rather than being silently ignored**:
+These **fail validation rather than being silently ignored**. The check is
+`optimization/supported.py`; `build_spec` runs it before any model is built, the API runs
+it again at submission so a bad scenario is refused immediately rather than failing as a
+job, and every problem is reported at once.
 
 - Multi-year horizons with staged expansion and year-on-year degradation. The schema
   carries `ExpansionPhase` and `operating_years`, and the finance module has the
@@ -35,7 +38,17 @@ These **fail validation rather than being silently ignored**:
   unlimited free storage, so it is rejected.
 - Monetising degradation through modelled replacement or augmentation cash flows. Only
   the throughput-wear approximation is implemented.
-- Discrete equipment sizes (`AssetOption.step_mw`) and explicit retirement dates.
+- Discrete equipment sizes (`AssetOption.step_mw`).
+- Existing plant that is commissioned after the operating year starts, or retires within
+  or before it. A retirement date after the year is accepted, since it changes nothing.
+- Two asset options of the same technology. Capacities are reported per technology, so
+  the second would overwrite the first and existing plant would be counted twice.
+- Existing plant whose technology has no asset option. The option supplies the generation
+  profile; without one the plant's energy would be dropped while its O&M was still charged.
+  An option that is present but disabled still supplies the profile — it just cannot buy
+  more.
+- Mode B capacities under a key that is not one of the five capacity names, negative, or
+  non-zero for a technology no enabled option can build.
 
 ## Judgement calls worth knowing about
 

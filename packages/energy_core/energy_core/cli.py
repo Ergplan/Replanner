@@ -10,7 +10,7 @@ import pandas as pd
 
 from . import MODEL_VERSION
 from .schemas.common import Mode
-from .optimization import build_spec, solve_year
+from .optimization import UnsupportedInput, build_spec, solve_year
 from .schemas.results import CapacityResult, CostLedger
 from .validation import Tolerances, certify
 
@@ -122,7 +122,7 @@ def main(argv=None) -> int:
     o = sub.add_parser("optimise", help="solve one operating year")
     o.add_argument("--year", type=int, default=2026)
     o.add_argument("--manual", type=str, default=None,
-                   help='JSON capacities to fix, e.g. \'{"solar_oa_mw": 10}\'')
+                   help='JSON capacities to fix, e.g. \'{"solar_remote_mw": 10}\'')
     o.add_argument("--time-limit", type=float, default=900.0)
     o.add_argument("--mip-gap", type=float, default=1e-4)
     o.add_argument("--out", type=str, default=None)
@@ -134,7 +134,11 @@ def main(argv=None) -> int:
     c.add_argument("--year", type=int, default=2026)
     c.set_defaults(func=cmd_certify)
     a = ap.parse_args(argv)
-    return a.func(a)
+    try:
+        return a.func(a)
+    except UnsupportedInput as exc:
+        print(json.dumps({"status": "rejected", "unsupported_inputs": exc.problems}, indent=2))
+        return 2
 
 
 if __name__ == "__main__":

@@ -18,14 +18,7 @@ from ..finance import annualised_capex
 from ..schemas.common import DT_HOURS, Mode
 from ..schemas.domain import ProjectInputs
 from ..tariffs import TariffEngine
-
-
-#: The five capacity names the wizard, the sliders and the Mode B comparison all speak.
-CAP_KEY_BY_TECH = {
-    "solar_onsite": "solar_onsite_mw",
-    "solar_remote": "solar_remote_mw",
-    "wind_remote": "wind_remote_mw",
-}
+from .supported import CAP_KEY_BY_TECH, check_supported
 
 
 @dataclass
@@ -166,6 +159,8 @@ def build_spec(inputs: ProjectInputs, frame: pd.DataFrame, operating_year: int,
                fixed_capacities: dict[str, float] | None = None,
                model_version: str = "") -> RunSpec:
     """Resolve user inputs and one aligned frame into the numeric problem."""
+    check_supported(inputs, operating_year,
+                    fixed_capacities=fixed_capacities if mode is Mode.MANUAL else None)
     ts = pd.DatetimeIndex(frame["timestamp_utc"])
     n = len(frame)
     tz = inputs.project.timezone
@@ -189,12 +184,15 @@ def build_spec(inputs: ProjectInputs, frame: pd.DataFrame, operating_year: int,
 
     gens: list[GenSpec] = []
     for opt in inputs.asset_options:
-        if not opt.enabled:
+        existing_mw = existing_by_tech.get(opt.technology, 0.0)
+        # A disabled option still supplies the profile for plant already built with that
+        # technology; it just cannot buy more.
+        if not opt.enabled and existing_mw <= 0:
             continue
         if opt.profile_key not in frame.columns:
             raise KeyError(f"asset option {opt.option_id!r} needs profile {opt.profile_key!r}")
-        # First-year degradation is applied to the profile; multi-year staging applies its
-        # own factor per operating year.
+        # The profile is used undegraded: this is the first operating year, and
+        # degradation_pct_per_year compounds from the second, which is out of scope.
         prof = frame[opt.profile_key].to_numpy(dtype=float)
         gens.append(GenSpec(
             key=opt.option_id,
@@ -202,8 +200,9 @@ def build_spec(inputs: ProjectInputs, frame: pd.DataFrame, operating_year: int,
             cap_key=CAP_KEY_BY_TECH[opt.technology],
             profile=prof,
             delivery_factor=1.0 - opt.delivery_loss_pct,
-            existing_mw=existing_by_tech.get(opt.technology, 0.0),
-            min_mw=opt.min_mw, max_mw=opt.max_mw,
+            existing_mw=existing_mw,
+            min_mw=opt.min_mw if opt.enabled else 0.0,
+            max_mw=opt.max_mw if opt.enabled else 0.0,
             annuity_inr_per_mw_year=annualised_capex(opt.capex_inr_per_mw, r, opt.life_years),
             fixed_om_inr_per_mw_year=opt.fixed_om_inr_per_mw_year,
             variable_om_inr_per_mwh=opt.variable_om_inr_per_mwh,
