@@ -45,12 +45,16 @@ Apple Silicon, Python 3.12.5, HiGHS 1.11.0, one operating year of 35,040 blocks:
 
 | | Mode A | Mode B |
 |---|---|---|
-| Variables | 455,537 | 455,537 |
+| Variables | 490,577 | 490,577 |
 | Constraints | 455,533 | 455,533 |
 | Model build | 0.6 s | 0.6 s |
 | Solve | 197 s | 26 s |
 | Certification | ~2 s | ~2 s |
 | Gap | 3.7e-15 | 3.9e-15 |
+
+The variable count includes one diagnostic unserved-load slack per block, bounded to
+zero in every normal run. On a 4-core Linux container (same versions), Mode A took 385 s
+and Mode B 69 s.
 
 Mode B is much faster because the capacity columns are pinned, which is what makes the
 slider workflow usable. It is still far too slow for a keystroke, which is why the UI

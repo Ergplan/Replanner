@@ -18,7 +18,7 @@ from ..finance import annualised_capex
 from ..schemas.common import DT_HOURS, Mode
 from ..schemas.domain import ProjectInputs
 from ..tariffs import TariffEngine
-from .supported import CAP_KEY_BY_TECH, check_supported
+from .supported import CAP_KEY_BY_TECH, capacity_limits, check_supported
 
 
 @dataclass
@@ -186,9 +186,11 @@ def build_spec(inputs: ProjectInputs, frame: pd.DataFrame, operating_year: int,
         else:
             existing_by_tech[a.technology] = existing_by_tech.get(a.technology, 0.0) + a.capacity_mw
 
+    limits = capacity_limits(inputs)
     gens: list[GenSpec] = []
     for opt in inputs.asset_options:
         existing_mw = existing_by_tech.get(opt.technology, 0.0)
+        lo, hi, step = limits.get(CAP_KEY_BY_TECH[opt.technology], (0.0, 0.0, None))
         # A disabled option still supplies the profile for plant already built with that
         # technology; it just cannot buy more.
         if not opt.enabled and existing_mw <= 0:
@@ -205,13 +207,12 @@ def build_spec(inputs: ProjectInputs, frame: pd.DataFrame, operating_year: int,
             profile=prof,
             delivery_factor=1.0 - opt.delivery_loss_pct,
             existing_mw=existing_mw,
-            min_mw=opt.min_mw if opt.enabled else 0.0,
-            max_mw=opt.max_mw if opt.enabled else 0.0,
+            min_mw=lo, max_mw=hi,
             annuity_inr_per_mw_year=annualised_capex(opt.capex_inr_per_mw, r, opt.life_years),
             fixed_om_inr_per_mw_year=opt.fixed_om_inr_per_mw_year,
             variable_om_inr_per_mwh=opt.variable_om_inr_per_mwh,
             wheeled=opt.route.value == "open_access",
-            step_mw=opt.step_mw if opt.enabled else None,
+            step_mw=step,
         ))
 
     b = inputs.battery

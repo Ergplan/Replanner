@@ -21,7 +21,9 @@ sys.path.insert(0, str(ROOT / "packages" / "energy_core"))
 sys.path.insert(0, str(ROOT / "datasets" / "synthetic"))
 
 import jobs as J  # noqa: E402
-from energy_core.optimization.supported import unsupported_input_problems  # noqa: E402
+from energy_core.optimization.supported import (  # noqa: E402
+    CAP_KEY_BY_TECH, capacity_limits, unsupported_input_problems,
+)
 
 app = FastAPI(title="Least-cost energy digital twin", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3210"],
@@ -54,10 +56,15 @@ def project(year: int = 2026):
     here rather than hardcoding them, so the backend stays the authority."""
     from project import seeded_project
     inp = seeded_project(year)
-    caps = {o.option_id: {"min_mw": o.min_mw, "max_mw": o.max_mw, "step_mw": o.step_mw,
-                          "enabled": o.enabled,
-                          "technology": o.technology, "route": o.route.value}
-            for o in inp.asset_options}
+    limits = capacity_limits(inp)
+    caps = {}
+    for o in inp.asset_options:
+        # Effective limits, not the option's own: rooftop solar is also bounded by the
+        # roof, less the panels already on it.
+        lo, hi, step = limits.get(CAP_KEY_BY_TECH.get(o.technology), (0.0, 0.0, None))
+        caps[o.option_id] = {"min_mw": lo, "max_mw": hi, "step_mw": step,
+                             "enabled": o.enabled,
+                             "technology": o.technology, "route": o.route.value}
     b = inp.battery
     return {
         "project_id": inp.project.project_id, "name": inp.project.name,

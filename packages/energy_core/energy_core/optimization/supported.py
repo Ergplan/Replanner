@@ -40,6 +40,36 @@ def off_grid_mw(value_mw: float, step_mw: float) -> float:
     return abs(value_mw - round(value_mw / step_mw) * step_mw)
 
 
+def _existing_mw(inputs: ProjectInputs) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for a in inputs.existing_assets:
+        out[a.technology] = out.get(a.technology, 0.0) + a.capacity_mw
+    return out
+
+
+def capacity_limits(inputs: ProjectInputs) -> dict[str, tuple[float, float, float | None]]:
+    """(min, max, step) of new capacity for every capacity Mode A may buy.
+
+    The option's own max_mw is not the whole story for onsite solar: the roof and ground
+    it goes on hold a fixed MWp, and panels already there occupy part of it. The model,
+    the manual-scenario check, the certifier and the sliders all read this one answer.
+    """
+    site = inputs.project.site
+    room = max(site.roof_area_mw_cap + site.land_mw_cap
+               - _existing_mw(inputs).get("solar_onsite", 0.0), 0.0)
+    out: dict[str, tuple[float, float, float | None]] = {}
+    for o in inputs.asset_options:
+        if not o.enabled or o.technology not in CAP_KEY_BY_TECH:
+            continue
+        hi = min(o.max_mw, room) if o.technology == "solar_onsite" else o.max_mw
+        out[CAP_KEY_BY_TECH[o.technology]] = (o.min_mw, hi, o.step_mw)
+    b = inputs.battery
+    if b.enabled:
+        out["bess_power_mw"] = (b.min_power_mw, b.max_power_mw, None)
+        out["bess_energy_mwh"] = (b.min_energy_mwh, b.max_energy_mwh, None)
+    return out
+
+
 class UnsupportedInput(ValueError):
     def __init__(self, problems: list[str]):
         self.problems = problems
@@ -72,18 +102,37 @@ def unsupported_input_problems(inputs: ProjectInputs, operating_year: int, *,
                        f"{opt.technology!r}; expected one of {sorted(CAP_KEY_BY_TECH)}")
             continue
         techs.setdefault(opt.technology, []).append(opt.option_id)
-        if opt.step_mw is not None and opt.enabled:
-            lo, hi = unit_range(opt.min_mw, opt.max_mw, opt.step_mw)
-            if lo > hi:
-                out.append(f"asset option {opt.option_id!r}: no multiple of step_mw "
-                           f"{opt.step_mw} lies between min_mw {opt.min_mw} and max_mw "
-                           f"{opt.max_mw}")
     for tech, ids in techs.items():
         if len(ids) > 1:
             # Capacities are reported per technology, so two options of one technology
             # would overwrite each other's result and count existing plant twice.
             out.append(f"asset options {ids} share technology {tech!r}; one option per "
                        "technology")
+
+    site = proj.site
+    site_mwp = site.roof_area_mw_cap + site.land_mw_cap
+    onsite_existing = _existing_mw(inputs).get("solar_onsite", 0.0)
+    if onsite_existing > site_mwp + CAP_TOL_MW:
+        out.append(f"existing onsite solar {onsite_existing} MWp exceeds the site's roof + "
+                   f"land limit of {site_mwp} MWp")
+    limits = capacity_limits(inputs)
+    for opt in inputs.asset_options:
+        key = CAP_KEY_BY_TECH.get(opt.technology)
+        if not opt.enabled or key not in limits:
+            continue
+        lo, hi, step = limits[key]
+        if opt.technology == "solar_onsite" and opt.max_mw > 0 and hi <= 0:
+            out.append(f"asset option {opt.option_id!r} may build {opt.max_mw} MWp, but "
+                       f"site roof + land ({site_mwp} MWp) less existing onsite solar leaves "
+                       "no room; set site.roof_area_mw_cap / land_mw_cap or disable it")
+        elif lo > hi + CAP_TOL_MW:
+            out.append(f"asset option {opt.option_id!r}: min_mw {lo} exceeds the most it may "
+                       f"build, {hi}")
+        elif step is not None:
+            k_lo, k_hi = unit_range(lo, hi, step)
+            if k_lo > k_hi:
+                out.append(f"asset option {opt.option_id!r}: no multiple of step_mw {step} "
+                           f"lies between {lo} and {hi}")
 
     year_start, year_end = date(operating_year, 1, 1), date(operating_year, 12, 31)
     for a in inputs.existing_assets:
@@ -105,10 +154,7 @@ def unsupported_input_problems(inputs: ProjectInputs, operating_year: int, *,
         for k, v in fixed_capacities.items():
             if k in CAP_KEYS and not float(v) >= 0:
                 out.append(f"capacity {k} = {v}: must be a non-negative number")
-        buildable = {CAP_KEY_BY_TECH[o.technology] for o in inputs.asset_options
-                     if o.enabled and o.technology in CAP_KEY_BY_TECH}
-        if inputs.battery.enabled:
-            buildable |= {"bess_power_mw", "bess_energy_mwh"}
+        buildable = set(capacity_limits(inputs))
         for k, v in fixed_capacities.items():
             if k in CAP_KEYS and k not in buildable and float(v) > 0:
                 out.append(f"capacity {k} = {v}: no enabled option can build it")
@@ -125,14 +171,7 @@ def _manual_outside_options(inputs: ProjectInputs,
     the model, so it is checked at zero here.
     """
     out: list[str] = []
-    limits: list[tuple[str, float, float, float | None]] = [
-        (CAP_KEY_BY_TECH[o.technology], o.min_mw, o.max_mw, o.step_mw)
-        for o in inputs.asset_options if o.enabled and o.technology in CAP_KEY_BY_TECH]
-    b = inputs.battery
-    if b.enabled:
-        limits += [("bess_power_mw", b.min_power_mw, b.max_power_mw, None),
-                   ("bess_energy_mwh", b.min_energy_mwh, b.max_energy_mwh, None)]
-    for key, lo, hi, step in limits:
+    for key, (lo, hi, step) in capacity_limits(inputs).items():
         v = float(fixed_capacities.get(key, 0.0))
         if math.isnan(v):                       # already reported as not a number
             continue

@@ -35,9 +35,14 @@ that fails does not get a badge.
 On the seeded project:
 
 ```
-Mode A   INR 768,523,537.81/yr   gap 3.7e-15   certified   35,040 / 35,040 blocks checked
-Mode B   INR 768,523,537.81/yr   at the same capacities — delta exactly 0
+Mode A   INR 778,223,854.42/yr   gap 1.2e-15   certified   35,040 / 35,040 blocks checked
+Mode B   INR 778,223,854.42/yr   at the same capacities — delta 1.2e-7 INR, one ulp
 ```
+
+An earlier release reported INR 768,523,537.81. That design put 8 MWp of new panels
+next to the 1 MWp already on an 8 MWp roof: the site's roof limit was in the schema and
+never applied. The certifier now checks every capacity against the limit the model was
+given, and that run fails.
 
 ## Layout
 

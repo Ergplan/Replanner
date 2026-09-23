@@ -14,6 +14,11 @@ the order in force before quoting anything.
 - One operating year at full 15-minute chronology, 35,040 blocks (35,136 in a leap year).
 - Joint capacity and dispatch optimisation (Mode A); fixed-capacity dispatch (Mode B).
 - Onsite and open-access generation with separate delivery losses and charge stacks.
+- Onsite solar bounded by the site as well as by its option: new MWp can be no more
+  than `roof_area_mw_cap + land_mw_cap` less the onsite solar already installed
+  (`optimization/supported.py:capacity_limits`). The model, the manual-scenario check,
+  the certifier and the sliders all read that one bound. A site that leaves no room for
+  an enabled onsite option is refused, not quietly clamped to zero.
 - Retail time-of-day energy rates, effective-dated; monthly demand charges on a measured
   peak with an optional ratchet; kVA billing at a declared power factor; electricity duty.
 - Exchange purchase against an uploaded forecast series, including negative prices.

@@ -67,6 +67,10 @@ wires, `Σ_wheeled u_{g,t} + i^u_t + i^x_t ≤ Ī · g_t`.
 Months are local calendar months — which is why the canonical index spans a local year
 (`ingestion/chronology.py`).
 
+**Site area.** For onsite solar, `C_g ≤ roof + land − E_g`, applied as the upper bound of
+`C_g` together with the option's own `max_mw`. The roof holds a fixed MWp, and panels
+already on it take part of that.
+
 **Discrete sizes.** For an option with a unit size `s_g`, `C_g = s_g · k_g` with `k_g`
 a non-negative integer in `[⌈min/s_g⌉, ⌊max/s_g⌋]`. Only Mode A carries `k_g`; Mode B
 fixes `C_g` directly, on a value the input check has already put on the grid. A MIP solve

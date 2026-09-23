@@ -7,7 +7,9 @@ import pandas as pd
 import pytest
 
 from energy_core.ingestion import build_index
-from energy_core.optimization import UnsupportedInput, build_spec, unsupported_input_problems
+from energy_core.optimization import (
+    UnsupportedInput, build_spec, capacity_limits, unsupported_input_problems,
+)
 from energy_core.schemas.common import Mode
 from energy_core.schemas.domain import ExistingAsset, ExpansionPhase
 from project import seeded_project
@@ -90,6 +92,32 @@ def test_build_spec_checks_fixed_capacities_only_in_manual_mode():
     with pytest.raises(UnsupportedInput, match="unknown capacity keys"):
         build_spec(seeded_project(YEAR), _day_frame(), YEAR, mode=Mode.MANUAL,
                    fixed_capacities={"solar_oa_mw": 10.0})
+
+
+def test_the_roof_holds_what_it_holds_less_the_panels_already_on_it():
+    """8 MWp of roof with a 1 MWp legacy array leaves 7, whatever the option allows."""
+    p = seeded_project(YEAR)
+    assert capacity_limits(p)["solar_onsite_mw"][1] == pytest.approx(7.0)
+    roof = next(g for g in build_spec(p, _day_frame(), YEAR).generation
+                if g.cap_key == "solar_onsite_mw")
+    assert roof.max_mw == pytest.approx(7.0)
+    assert any("outside the option's range" in s
+               for s in _problems(p, fixed_capacities={"solar_onsite_mw": 8.0}))
+
+
+def test_ground_mount_adds_to_the_roof():
+    p = seeded_project(YEAR)
+    p.project.site.land_mw_cap = 3.0
+    p.asset_options[0].max_mw = 20.0
+    assert capacity_limits(p)["solar_onsite_mw"][1] == pytest.approx(10.0)
+
+
+def test_a_site_with_no_room_for_an_enabled_rooftop_option_is_refused():
+    p = seeded_project(YEAR)
+    p.project.site.roof_area_mw_cap = 1.0                 # exactly the legacy array
+    assert any("leaves no room" in s for s in _problems(p))
+    p.project.site.roof_area_mw_cap = 0.5                 # less than is already there
+    assert any("exceeds the site's roof + land" in s for s in _problems(p))
 
 
 def test_existing_plant_still_generates_when_its_option_is_disabled():
