@@ -31,12 +31,19 @@ def test_the_seeded_project_is_supported():
     assert _problems(seeded_project(YEAR)) == []
 
 
+def _bank_with_nothing_wheeled(p):
+    p.open_access.banking_enabled = True
+    for o in p.asset_options:
+        if o.route.value == "open_access":
+            o.enabled = False
+
+
 @pytest.mark.parametrize("mutate,needle", [
     (lambda p: setattr(p.project, "operating_years", [2026, 2027]), "multi-year"),
     (lambda p: setattr(p.project, "operating_years", [2027]), "not in project.operating_years"),
     (lambda p: p.expansion.append(ExpansionPhase(phase_id="ph2", commissioning=date(2026, 6, 1),
                                                  load_scale_factor=1.2)), "expansion"),
-    (lambda p: setattr(p.open_access, "banking_enabled", True), "banking"),
+    (lambda p: _bank_with_nothing_wheeled(p), "nothing is wheeled"),
     (lambda p: setattr(p.existing_assets[0], "retires", date(2026, 9, 30)), "retires"),
     (lambda p: setattr(p.existing_assets[0], "commissioned", date(2026, 3, 1)), "commissioned"),
     (lambda p: setattr(p.asset_options[2], "technology", "solar_onsite"), "share technology"),
@@ -59,9 +66,16 @@ def test_a_retirement_after_the_year_is_harmless():
 
 def test_every_problem_is_reported_at_once():
     p = seeded_project(YEAR)
-    p.open_access.banking_enabled = True
+    p.expansion.append(ExpansionPhase(phase_id="ph2", commissioning=date(2026, 6, 1),
+                                      load_scale_factor=1.2))
     p.project.operating_years = [2026, 2027]
     assert len(_problems(p)) == 2
+
+
+def test_banking_is_accepted_when_something_is_wheeled():
+    p = seeded_project(YEAR)
+    p.open_access.banking_enabled = True
+    assert _problems(p) == []
 
 
 @pytest.mark.parametrize("caps,needle", [
@@ -83,8 +97,9 @@ def test_a_manual_scenario_cannot_build_a_disabled_option():
 
 def test_build_spec_refuses_before_touching_the_frame():
     p = seeded_project(YEAR)
-    p.open_access.banking_enabled = True
-    with pytest.raises(UnsupportedInput, match="banking"):
+    p.expansion.append(ExpansionPhase(phase_id="ph2", commissioning=date(2026, 6, 1),
+                                      load_scale_factor=1.2))
+    with pytest.raises(UnsupportedInput, match="expansion"):
         build_spec(p, pd.DataFrame(), YEAR)
 
 

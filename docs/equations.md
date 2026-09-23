@@ -33,6 +33,7 @@ min  Σ_g C_g (a_g + f_g)  +  P (a_P + f_P)  +  Q a_Q  +  F_existing
    + Σ_g Σ_t u_{g,t} Δt v_g
    + Σ_t d_t Δt w
    − Σ_t (e^u_t Δt π^e + e^x_t Δt π^s_t)
+   + Σ_t b⁺_t Δt β  −  λ Σ_p B_{end(p)}                 (banking, when enabled)
 ```
 
 `a` is an annuity, `f` fixed O&M, `δ` electricity duty, `π_t` the retail energy rate,
@@ -66,6 +67,15 @@ wires, `Σ_wheeled u_{g,t} + i^u_t + i^x_t ≤ Ī · g_t`.
 **Billing demand.** `D_m ≥ i^u_t` for every `t` in month `m`, and `D_m ≥ ratchet · contract`.
 Months are local calendar months — which is why the canonical index spans a local year
 (`ingestion/chronology.py`).
+
+**Banking.** With deposits `b⁺_t ≤ Σ_wheeled u_{g,t}`, drawals `b⁻_t` (zero in blocked
+hours), in-kind charge `κ` and settlement period `p(t)`:
+`B_t = [t opens p(t)] ? 0 : B_{t−1}` `+ (1−κ) b⁺_t Δt − b⁻_t Δt`, with `B_t ≥ 0`. The site
+balance and the connection limit replace `Σ u` with `Σ u − b⁺_t + b⁻_t`. The balance at a
+period's last block lapses. The objective adds `Σ_t b⁺_t Δt β` for the money charge `β`,
+and subtracts `λ Σ_p B_{end(p)}` for a lapse credit `λ`. An optional cap is
+`Σ_{t∈p} b⁺_t Δt ≤ cap_frac · Σ_{t∈p} L_t Δt`. The validator rebuilds `B` from `b⁺` and
+`b⁻` itself, and never reads the exported balance as truth.
 
 **Site area.** For onsite solar, `C_g ≤ roof + land − E_g`, applied as the upper bound of
 `C_g` together with the option's own `max_mw`. The roof holds a fixed MWp, and panels

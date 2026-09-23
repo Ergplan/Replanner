@@ -135,6 +135,10 @@ def daily(run_id: str):
     df = pd.read_parquet(p)
     df["day"] = pd.DatetimeIndex(df["timestamp_utc"]).tz_convert("Asia/Kolkata").normalize()
     use_cols = [c for c in df.columns if c.startswith("use_")]
+    # A deposit in the bank is wheeled energy that did not reach the site that day.
+    if "bank_in_mw" in df.columns:
+        df["_banked"] = -df["bank_in_mw"]
+        use_cols.append("_banked")
     g = df.groupby("day")
     out = pd.DataFrame({
         "day": [str(d.date()) for d in g.size().index],

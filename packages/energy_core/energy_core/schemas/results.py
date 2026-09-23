@@ -24,7 +24,9 @@ class CostLedger(BaseModel):
     market_purchase: float = 0.0
     market_transaction: float = 0.0
     battery_wear: float = 0.0
+    banking_charges: float = 0.0
     export_revenue: float = 0.0        # negative, a credit
+    banking_lapse_credit: float = 0.0  # negative, a credit
     total_annual_cost: float = 0.0
 
     def components(self) -> dict[str, float]:

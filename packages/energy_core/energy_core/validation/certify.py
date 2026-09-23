@@ -118,6 +118,9 @@ def certify(spec: RunSpec, caps: CapacityResult, dispatch: pd.DataFrame, ledger:
         issues.append(_issue("interval_coverage", 1, 0, "hours", "duration_hours is not 0.25"))
 
     col = lambda c: dispatch[c].to_numpy(dtype=float)
+    # Runs exported before banking existed have no bank columns; they banked nothing.
+    col0 = lambda c: col(c) if c in dispatch.columns else np.zeros(n)
+    bank_in, bank_out = col0("bank_in_mw"), col0("bank_out_mw")
     imp_u, imp_x = col("import_utility_mw"), col("import_market_mw")
     exp_u, exp_x = col("export_utility_mw"), col("export_market_mw")
     ch, dis = col("battery_charge_mw"), col("battery_discharge_mw")
@@ -164,10 +167,56 @@ def certify(spec: RunSpec, caps: CapacityResult, dispatch: pd.DataFrame, ledger:
 
     # ---- 3. energy balance ------------------------------------------------------------
     checks.append("energy_balance")
-    supply = total_use + imp_u + imp_x + dis
+    supply = total_use - bank_in + bank_out + imp_u + imp_x + dis
     drain = spec.load_mw + ch + aux + exp_u + exp_x
     _worst("energy_balance", supply - drain, tol.power_mw, "MW", spec, issues, maxres,
            "supply + discharge must equal load + charge + auxiliaries + export")
+
+    # ---- 3b. banking ----------------------------------------------------------------
+    checks.append("banking")
+    bk = spec.banking
+    wheeled_total = sum((col(f"use_{g.key}_mw") for g in spec.generation if g.wheeled),
+                        np.zeros(n))
+    _worst("bank_nonneg", -np.minimum(np.minimum(bank_in, bank_out), 0.0), tol.power_mw,
+           "MW", spec, issues, maxres, "bank deposit or drawal went negative",
+           two_sided=False)
+    if bk is None:
+        _worst("bank_disabled", np.maximum(bank_in, bank_out), tol.power_mw, "MW", spec,
+               issues, maxres, "energy moved through a bank this project does not have",
+               two_sided=False)
+        lapse_mwh = 0.0
+    else:
+        _worst("bank_source", bank_in - wheeled_total, tol.power_mw, "MW", spec, issues,
+               maxres, "only wheeled energy may be deposited", two_sided=False)
+        _worst("bank_drawal_hours", np.where(bk.drawal_allowed, 0.0, bank_out),
+               tol.power_mw, "MW", spec, issues, maxres,
+               "energy drawn in an hour the banking rules block", two_sided=False)
+        # Rebuild the balance from deposits and drawals alone, resetting at every
+        # settlement period, rather than trusting the exported balance column.
+        step = (1.0 - bk.charge_frac) * bank_in * dt - bank_out * dt
+        bal = np.empty(n)
+        for a, z in zip(bk.period_starts(), bk.period_ends()):
+            bal[a:z + 1] = np.cumsum(step[a:z + 1])
+        _worst("bank_balance", col0("bank_balance_mwh") - bal, tol.energy_mwh, "MWh", spec,
+               issues, maxres, "bank balance must follow deposits less the licensee's cut "
+               "less drawals, from zero at each settlement")
+        _worst("bank_overdrawn", -bal, tol.energy_mwh, "MWh", spec, issues, maxres,
+               "drew more than had been banked in the settlement period", two_sided=False)
+        lapse = np.zeros(n)
+        lapse[bk.period_ends()] = bal[bk.period_ends()]
+        _worst("bank_lapse", col0("bank_lapse_mwh") - lapse, tol.energy_mwh, "MWh", spec,
+               issues, maxres, "what lapses is the balance at the end of each period")
+        lapse_mwh = float(lapse.sum())
+        if bk.cap_mwh is not None:
+            banked = np.bincount(bk.period_index, weights=bank_in * dt,
+                                 minlength=bk.n_periods)
+            over = banked - bk.cap_mwh
+            maxres["bank_cap"] = float(max(over.max(), 0.0))
+            if over.max() > tol.energy_mwh:
+                p = int(np.argmax(over))
+                issues.append(_issue("bank_cap", float(over[p]), tol.energy_mwh, "MWh",
+                                     f"banked {banked[p]:,.2f} MWh in settlement period {p}, "
+                                     f"cap {bk.cap_mwh[p]:,.2f} MWh"))
 
     # ---- 4. storage --------------------------------------------------------------------
     checks.append("soc_transitions")
@@ -215,8 +264,10 @@ def certify(spec: RunSpec, caps: CapacityResult, dispatch: pd.DataFrame, ledger:
     limit = spec.import_limit_mw * spec.grid_available
     _worst("import_limit", imp_u + imp_x - limit, tol.power_mw, "MW", spec, issues, maxres,
            "utility, open access and market imports share one connection", two_sided=False)
-    _worst("wheeled_limit", wheeled_use + imp_u + imp_x - limit, tol.power_mw, "MW", spec,
-           issues, maxres, "wheeled generation also crosses the connection", two_sided=False)
+    _worst("wheeled_limit", wheeled_use - bank_in + bank_out + imp_u + imp_x - limit,
+           tol.power_mw, "MW", spec, issues, maxres,
+           "wheeled generation and banked drawal also cross the connection",
+           two_sided=False)
     _worst("export_limit", exp_u + exp_x - spec.export_limit_mw * spec.grid_available,
            tol.power_mw, "MW", spec, issues, maxres, "export above the sanctioned limit",
            two_sided=False)
@@ -275,6 +326,9 @@ def certify(spec: RunSpec, caps: CapacityResult, dispatch: pd.DataFrame, ledger:
     if spec.market_oa_applies:
         re_ledger.open_access_charges += float(imp_x.sum() * dt * spec.oa_charge_inr_per_mwh)
     re_ledger.battery_wear = float(dis.sum() * dt * b.wear_inr_per_mwh_discharged)
+    if bk is not None:
+        re_ledger.banking_charges = float(bank_in.sum() * dt * bk.charge_inr_per_mwh)
+        re_ledger.banking_lapse_credit = -lapse_mwh * bk.lapse_credit_inr_per_mwh
     re_ledger.export_revenue = -(float((exp_u * dt * spec.export_inr_per_mwh).sum())
                                  + float((exp_x * dt * spec.iex_sell_inr_per_mwh).sum()))
     re_ledger.total_annual_cost = re_ledger.recompute_total()

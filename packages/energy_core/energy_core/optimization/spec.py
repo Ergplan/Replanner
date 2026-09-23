@@ -70,6 +70,32 @@ class BatterySpec:
 
 
 @dataclass
+class BankingSpec:
+    """Wheeled-energy banking, resolved onto the block index.
+
+    Energies are MWh at the site-delivered basis, the same basis as `use`, so a banked
+    MWh and a consumed MWh are the same MWh before the licensee's cut.
+    """
+
+    charge_frac: float                  # kept by the licensee, in kind, on deposit
+    charge_inr_per_mwh: float           # money charge on every MWh deposited
+    lapse_credit_inr_per_mwh: float     # paid for what is left at settlement
+    period_index: np.ndarray            # settlement period of each block, 0-based
+    n_periods: int
+    drawal_allowed: np.ndarray          # bool per block
+    cap_mwh: np.ndarray | None          # per period, or no cap
+
+    def period_ends(self) -> np.ndarray:
+        """Last block of each settlement period, where the balance lapses."""
+        p = self.period_index
+        return np.flatnonzero(np.r_[p[1:] != p[:-1], True])
+
+    def period_starts(self) -> np.ndarray:
+        p = self.period_index
+        return np.flatnonzero(np.r_[True, p[1:] != p[:-1]])
+
+
+@dataclass
 class RunSpec:
     """Immutable, hashable, and sufficient on its own to reproduce a run."""
 
@@ -118,6 +144,7 @@ class RunSpec:
     fixed_capacities: dict[str, float] | None = None
     model_version: str = ""
     notes: dict = field(default_factory=dict)
+    banking: BankingSpec | None = None
 
     # -- identity ------------------------------------------------------------------
     def fingerprint(self) -> str:
@@ -154,6 +181,15 @@ class RunSpec:
             "existing_fom": self.existing_fixed_om_inr_year,
             "model_version": self.model_version,
         }, sort_keys=True).encode())
+        bk = self.banking
+        if bk is not None:              # absent banking leaves older fingerprints intact
+            h.update(np.ascontiguousarray(bk.period_index, dtype=np.float64).tobytes())
+            h.update(np.ascontiguousarray(bk.drawal_allowed, dtype=np.float64).tobytes())
+            if bk.cap_mwh is not None:
+                h.update(np.ascontiguousarray(bk.cap_mwh, dtype=np.float64).tobytes())
+            h.update(json.dumps({"banking": [bk.charge_frac, bk.charge_inr_per_mwh,
+                                             bk.lapse_credit_inr_per_mwh, bk.n_periods,
+                                             bk.cap_mwh is None]}).encode())
         return h.hexdigest()[:32]
 
     @property
@@ -255,13 +291,34 @@ def build_spec(inputs: ProjectInputs, frame: pd.DataFrame, operating_year: int,
             raise KeyError(f"frame is missing required column {name!r}")
         return np.full(n, default)
 
+    load = col("load_mw")
+    oa = inputs.open_access
+    banking = None
+    if oa.banking_enabled:
+        # Monthly settlement uses the same local billing months as the demand charge.
+        period = (res.month_index if oa.banking_settlement == "month"
+                  else np.zeros(n, dtype=int))
+        n_periods = int(period.max()) + 1 if n else 0
+        hour = pd.DatetimeIndex(ts).tz_convert(tz).hour.to_numpy()
+        cap = None
+        if oa.banking_cap_frac_of_load is not None:
+            cap = oa.banking_cap_frac_of_load * np.bincount(
+                period, weights=load * DT_HOURS, minlength=n_periods)
+        banking = BankingSpec(
+            charge_frac=oa.banking_charge_frac,
+            charge_inr_per_mwh=oa.banking_charge_inr_per_kwh * 1000.0,
+            lapse_credit_inr_per_mwh=oa.banking_lapse_credit_inr_per_kwh * 1000.0,
+            period_index=np.asarray(period, dtype=int), n_periods=n_periods,
+            drawal_allowed=~np.isin(hour, oa.banking_drawal_blocked_hours),
+            cap_mwh=cap)
+
     mk = inputs.market
     return RunSpec(
         project_id=inputs.project.project_id,
         operating_year=operating_year,
         timezone=tz,
         n=n, dt=DT_HOURS, timestamps_utc=ts,
-        load_mw=col("load_mw"),
+        load_mw=load,
         grid_available=col("grid_available", 1.0),
         energy_inr_per_mwh=res.energy_inr_per_mwh,
         tariff_rule_id=res.rule_id,
@@ -283,4 +340,5 @@ def build_spec(inputs: ProjectInputs, frame: pd.DataFrame, operating_year: int,
         generation=gens, battery=bat,
         existing_fixed_om_inr_year=existing_fom,
         mode=mode, fixed_capacities=fixed_capacities, model_version=model_version,
+        banking=banking,
     )

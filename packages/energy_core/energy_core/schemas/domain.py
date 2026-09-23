@@ -171,8 +171,33 @@ class OpenAccessCharges(BaseModel):
     cross_subsidy_surcharge_inr_per_kwh: float = Field(default=0.0, ge=0)
     additional_surcharge_inr_per_kwh: float = Field(default=0.0, ge=0)
     scheduling_inr_per_kwh: float = Field(default=0.0, ge=0)
-    banking_enabled: bool = False
     effective_from: date | None = None
+
+    # Banking: wheeled energy not used at the site in its block is lodged with the
+    # licensee and drawn later. Without a settlement period it would be free unlimited
+    # storage, so the balance is always settled: whatever is left at the end of each
+    # period lapses, optionally for a credit.
+    banking_enabled: bool = False
+    banking_settlement: Literal["month", "year"] = "month"
+    banking_charge_frac: float = Field(
+        default=0.0, ge=0, lt=1, description="Share of banked energy the licensee keeps, in kind")
+    banking_charge_inr_per_kwh: float = Field(
+        default=0.0, ge=0, description="Money charge on every kWh banked")
+    banking_lapse_credit_inr_per_kwh: float = Field(
+        default=0.0, ge=0, description="Paid for banked energy unused at settlement")
+    banking_drawal_blocked_hours: list[int] = Field(
+        default_factory=list, description="Local clock hours in which nothing may be drawn")
+    banking_cap_frac_of_load: float | None = Field(
+        default=None, gt=0, le=1,
+        description="Energy banked in a settlement period, at most this share of that "
+                    "period's site load")
+
+    @model_validator(mode="after")
+    def _hours(self):
+        bad = [h for h in self.banking_drawal_blocked_hours if not 0 <= h <= 23]
+        if bad:
+            raise ValueError(f"banking_drawal_blocked_hours must be 0-23, got {bad}")
+        return self
 
     @property
     def total_inr_per_kwh(self) -> float:

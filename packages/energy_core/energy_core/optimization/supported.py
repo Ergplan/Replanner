@@ -92,8 +92,13 @@ def unsupported_input_problems(inputs: ProjectInputs, operating_year: int, *,
         ids = [p.phase_id for p in inputs.expansion]
         out.append(f"expansion phases {ids}: staged load growth is not supported")
     if inputs.open_access.banking_enabled:
-        out.append("open_access.banking_enabled: banking without an intertemporal balance, "
-                   "expiry and settlement rules would be unlimited free storage")
+        existing = _existing_mw(inputs)
+        wheeled = [o.option_id for o in inputs.asset_options
+                   if o.route.value == "open_access"
+                   and (o.enabled or existing.get(o.technology, 0.0) > 0)]
+        if not wheeled:
+            out.append("open_access.banking_enabled: nothing is wheeled, so there is "
+                       "nothing to bank; enable an open-access option or disable banking")
 
     techs: dict[str, list[str]] = {}
     for opt in inputs.asset_options:

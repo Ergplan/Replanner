@@ -130,10 +130,41 @@ def build_model(spec: RunSpec, *, force_binary_blocks: list[int] | None = None,
             (_m.cap[k] + g.existing_mw) * g.profile[t] * g.delivery_factor)
     m.avail = pyo.Constraint(m.G, m.T, rule=avail)
 
+    wheeled = [g.key for g in gens if g.wheeled]
+
+    # ---- banking of wheeled energy ------------------------------------------------
+    # `use` of a wheeled source is energy delivered to the licensee's network for this
+    # site. The part deposited in the bank never reaches the site in this block, so it
+    # neither serves load nor crosses the connection; what is drawn later does both.
+    # The balance resets at every settlement period, so a period cannot open on energy
+    # it did not bank, and whatever is left at its last block lapses.
+    bk = spec.banking
+    if bk is not None:
+        m.bank_in = pyo.Var(m.T, domain=pyo.NonNegativeReals)
+        m.bank_out = pyo.Var(m.T, bounds=lambda _m, t: (0, None if bk.drawal_allowed[t] else 0))
+        m.bank_bal = pyo.Var(m.T, domain=pyo.NonNegativeReals)
+        m.bank_src = pyo.Constraint(
+            m.T, rule=lambda _m, t: _m.bank_in[t] <= sum(_m.use[k, t] for k in wheeled))
+        starts = set(bk.period_starts().tolist())
+        keep = 1.0 - bk.charge_frac
+        def bank_rec(_m, t):
+            prev = 0.0 if t in starts else _m.bank_bal[t - 1]
+            return _m.bank_bal[t] == prev + keep * _m.bank_in[t] * dt - _m.bank_out[t] * dt
+        m.bank_rec = pyo.Constraint(m.T, rule=bank_rec)
+        if bk.cap_mwh is not None:
+            members = [np.flatnonzero(bk.period_index == p) for p in range(bk.n_periods)]
+            m.bank_cap = pyo.Constraint(
+                range(bk.n_periods),
+                rule=lambda _m, p: sum(_m.bank_in[int(t)] for t in members[p]) * dt
+                <= float(bk.cap_mwh[p]))
+        net_bank = lambda t: m.bank_out[t] - m.bank_in[t]
+    else:
+        net_bank = lambda t: 0.0
+
     # ---- site energy balance ----------------------------------------------------
     aux = bat.aux_frac_of_power
     def balance(_m, t):
-        supply = (sum(_m.use[k, t] for k in gkeys) + _m.imp_u[t] + _m.imp_x[t]
+        supply = (sum(_m.use[k, t] for k in gkeys) + net_bank(t) + _m.imp_u[t] + _m.imp_x[t]
                   + _m.dis[t] + _m.unserved[t])
         drain = (spec.load_mw[t] + _m.ch[t] + aux * _m.bp_tot + _m.exp_u[t] + _m.exp_x[t])
         return supply == drain
@@ -150,12 +181,12 @@ def build_model(spec: RunSpec, *, force_binary_blocks: list[int] | None = None,
         return _m.exp_u[t] + _m.exp_x[t] <= spec.export_limit_mw * spec.grid_available[t]
     m.exp_cap = pyo.Constraint(m.T, rule=exp_cap)
 
-    # Wheeled generation also crosses the connection on its way in.
-    wheeled = [g.key for g in gens if g.wheeled]
+    # Wheeled generation also crosses the connection on its way in, and so does energy
+    # drawn from the bank.
     if wheeled:
         def wheel_cap(_m, t):
-            return (sum(_m.use[k, t] for k in wheeled) + _m.imp_u[t] + _m.imp_x[t]
-                    <= spec.import_limit_mw * spec.grid_available[t])
+            return (sum(_m.use[k, t] for k in wheeled) + net_bank(t) + _m.imp_u[t]
+                    + _m.imp_x[t] <= spec.import_limit_mw * spec.grid_available[t])
         m.wheel_cap = pyo.Constraint(m.T, rule=wheel_cap)
 
     # ---- battery ----------------------------------------------------------------
@@ -193,8 +224,11 @@ def build_model(spec: RunSpec, *, force_binary_blocks: list[int] | None = None,
     if not bat.allow_grid_charging:
         # Electrons are fungible, so the enforceable form of "charge from renewables
         # only" is that charging in a block cannot exceed renewable output in that block.
+        # Energy deposited in the bank is not on site; energy drawn from it is counted
+        # as grid energy, which is the conservative reading.
         def re_only(_m, t):
-            return _m.ch[t] <= sum(_m.use[k, t] for k in gkeys)
+            deposited = _m.bank_in[t] if bk is not None else 0.0
+            return _m.ch[t] <= sum(_m.use[k, t] for k in gkeys) - deposited
         m.re_only = pyo.Constraint(m.T, rule=re_only)
 
     # ---- monthly billing demand -------------------------------------------------
@@ -245,6 +279,13 @@ def build_model(spec: RunSpec, *, force_binary_blocks: list[int] | None = None,
     wear = sum(m.dis[t] * dt * bat.wear_inr_per_mwh_discharged for t in T)
     revenue = (sum(m.exp_u[t] * dt * spec.export_inr_per_mwh for t in T)
                + sum(m.exp_x[t] * dt * spec.iex_sell_inr_per_mwh[t] for t in T))
+    banking = 0.0
+    if bk is not None:
+        if bk.charge_inr_per_mwh:
+            banking += sum(m.bank_in[t] for t in T) * dt * bk.charge_inr_per_mwh
+        if bk.lapse_credit_inr_per_mwh:
+            banking -= (sum(m.bank_bal[int(t)] for t in bk.period_ends())
+                        * bk.lapse_credit_inr_per_mwh)
 
     # The penalty is declared, finite and far above any real price, so a diagnostic run
     # sheds load only where nothing else can serve it.
@@ -254,7 +295,7 @@ def build_model(spec: RunSpec, *, force_binary_blocks: list[int] | None = None,
 
     m.obj = pyo.Objective(
         expr=capital + util_energy + util_demand + market + oa + vom + wear - revenue
-             + shortfall,
+             + banking + shortfall,
         sense=pyo.minimize)
 
     m._info = BuildInfo(n_binary_blocks=len(blocks), simultaneity_blocks=blocks, fixed=fixed)

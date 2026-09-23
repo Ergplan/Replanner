@@ -5,13 +5,13 @@ import numpy as np
 import pandas as pd
 
 from energy_core.schemas.common import DT_HOURS, Mode
-from energy_core.optimization.spec import BatterySpec, GenSpec, RunSpec
+from energy_core.optimization.spec import BankingSpec, BatterySpec, GenSpec, RunSpec
 
 
 def tiny_spec(n: int = 96, *, load_mw=1.0, tariff_inr_per_mwh=8000.0, demand_rate=0.0,
               gens=None, battery=None, import_limit=10.0, export_limit=0.0,
               iex_buy=None, market=False, month_index=None, duty=0.0,
-              mode=Mode.FIND_OPTIMUM, fixed=None) -> RunSpec:
+              mode=Mode.FIND_OPTIMUM, fixed=None, banking=None) -> RunSpec:
     ts = pd.date_range("2026-01-01", periods=n, freq="15min", tz="UTC", name="timestamp_utc")
     arr = lambda v: np.full(n, float(v))
     load = arr(load_mw) if np.isscalar(load_mw) else np.asarray(load_mw, dtype=float)
@@ -34,8 +34,20 @@ def tiny_spec(n: int = 96, *, load_mw=1.0, tariff_inr_per_mwh=8000.0, demand_rat
         allow_export=export_limit > 0,
         generation=gens or [], battery=battery or no_battery(),
         existing_fixed_om_inr_year=0.0, mode=mode, fixed_capacities=fixed,
-        model_version="test",
+        model_version="test", banking=banking,
     )
+
+
+def bank(n: int = 96, *, charge_frac=0.0, charge=0.0, credit=0.0, period=None,
+         blocked_hours=(), cap_mwh=None) -> BankingSpec:
+    """Banking on the tiny UTC index, where block t falls in clock hour t // 4."""
+    p = np.zeros(n, dtype=int) if period is None else np.asarray(period, dtype=int)
+    hours = np.arange(n) // 4 % 24
+    return BankingSpec(
+        charge_frac=charge_frac, charge_inr_per_mwh=charge, lapse_credit_inr_per_mwh=credit,
+        period_index=p, n_periods=int(p.max()) + 1,
+        drawal_allowed=~np.isin(hours, list(blocked_hours)),
+        cap_mwh=None if cap_mwh is None else np.asarray(cap_mwh, dtype=float))
 
 
 def no_battery() -> BatterySpec:

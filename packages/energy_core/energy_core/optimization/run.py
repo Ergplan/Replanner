@@ -87,7 +87,20 @@ def _extract(model, spec: RunSpec) -> tuple[CapacityResult, pd.DataFrame, np.nda
 
     bp_tot = caps.bess_power_mw + caps.existing_bess_power_mw
     df["aux_mw"] = spec.battery.aux_frac_of_power * bp_tot
-    df["renewable_used_mw"] = total_use
+    bk = spec.banking
+    zeros = np.zeros(n)
+    bank_in = g(model.bank_in) if bk is not None else zeros
+    bank_bal = g(model.bank_bal) if bk is not None else zeros
+    df["bank_in_mw"] = bank_in
+    df["bank_out_mw"] = g(model.bank_out) if bk is not None else zeros
+    df["bank_balance_mwh"] = bank_bal
+    lapse = np.zeros(n)
+    if bk is not None:
+        ends = bk.period_ends()
+        lapse[ends] = bank_bal[ends]
+    df["bank_lapse_mwh"] = lapse
+    # Renewable energy consumed on site in the block; a deposit is not on site.
+    df["renewable_used_mw"] = total_use - bank_in
     df["unserved_load_mw"] = np.fromiter(
         (pyo.value(model.unserved[t]) for t in range(n)), dtype=float, count=n)
     df["served_load_mw"] = spec.load_mw - df["unserved_load_mw"]
@@ -137,6 +150,11 @@ def _ledger(spec: RunSpec, caps: CapacityResult, df: pd.DataFrame,
     if spec.market_oa_applies:
         L.open_access_charges += float(imp_x.sum() * dt * spec.oa_charge_inr_per_mwh)
     L.battery_wear = float(dis.sum() * dt * b.wear_inr_per_mwh_discharged)
+    if spec.banking is not None:
+        L.banking_charges = float(df["bank_in_mw"].to_numpy().sum() * dt
+                                  * spec.banking.charge_inr_per_mwh)
+        L.banking_lapse_credit = -float(df["bank_lapse_mwh"].to_numpy().sum()
+                                        * spec.banking.lapse_credit_inr_per_mwh)
     L.export_revenue = -(float((df["export_utility_mw"].to_numpy() * dt
                                 * spec.export_inr_per_mwh).sum())
                          + float((df["export_market_mw"].to_numpy() * dt

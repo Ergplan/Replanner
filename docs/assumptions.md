@@ -29,6 +29,14 @@ the order in force before quoting anything.
   cyclic terminal rule, throughput-priced wear, and a warranty envelope. Annual
   throughput may not exceed the warranty's equivalent full cycles spread over the cell
   life the energy annuity assumes.
+- Banking of wheeled energy (`OpenAccessCharges.banking_*`). Wheeled energy not used at
+  the site in its block can be deposited with the licensee and drawn later in the same
+  settlement period, monthly (local billing months) or yearly. What is left at the end
+  of a period lapses, optionally for a credit, so the bank is never free storage. The
+  rules are configurable because states set them differently: an in-kind charge (the
+  licensee's share of each deposit), a money charge per kWh deposited, local hours in
+  which nothing may be drawn, and a cap on each period's deposits as a share of that
+  period's site load. Banking with nothing wheeled is refused.
 - Independent full-resolution certification, and a diagnostic relaxation that locates
   shortfalls in an infeasible scenario.
 
@@ -43,9 +51,10 @@ job, and every problem is reported at once.
   carries `ExpansionPhase` and `operating_years`, and the finance module has the
   discounted-cash-flow machinery, but the model builder solves one operating year. A
   one-year result is labelled as such and does not satisfy multi-year acceptance.
-- Banking and settlement of wheeled energy. `OpenAccessCharges.banking_enabled` exists;
-  enabling it without an intertemporal balance, expiry and settlement rules would be
-  unlimited free storage, so it is rejected.
+- Banking rules beyond those above: drawal restricted to the time-of-day slot the energy
+  was deposited in, a cap on consumption from the licensee rather than on site load, and
+  lapse credits that vary by period. There are no fields for these, so they cannot be
+  set by mistake.
 - Monetising degradation through modelled replacement or augmentation cash flows. Only
   the throughput-wear approximation is implemented.
 - A `step_mw` for which no whole number of units lies between the option's `min_mw` and
@@ -75,6 +84,18 @@ of the answer rests on the check, not on the heuristic that made it fast.
 **Renewable-only charging is enforced per block.** Electrons are fungible, so
 "charge from renewables only" is enforced as `charge_t ≤ Σ renewable_t`. Attribution
 beyond that is an accounting convention, not a physical fact.
+
+**Banked energy pays the whole open-access stack when it is deposited.** Transmission,
+wheeling, cross-subsidy and additional surcharges are charged on all wheeled energy,
+whether it is consumed in the block or banked. Some orders levy part of the stack on
+drawal instead. Charging it all at deposit can only overstate the cost of banking.
+
+**Banked energy does not cross the site connection when it is deposited.** The remote
+plant injects into the licensee's network, and the site's meter sees nothing until the
+energy is drawn. Drawal crosses the connection like any other import and counts toward
+its limit. Like wheeled energy, it is not part of the utility's billing demand. For
+renewable-only battery charging, drawn energy counts as grid energy — the conservative
+reading.
 
 **Perfect foresight.** Dispatch is optimised against a known year. That is a planning
 bound, not evidence of what a real-time controller would achieve.
