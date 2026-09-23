@@ -1,0 +1,11 @@
+# Pinned against Python 3.12. The repo's .venv is built from this file; see docs/operations.md.
+highspy==1.11.0
+Pyomo==6.10.1
+pandas==3.0.6
+pyarrow==25.0.1
+pydantic==2.13.5
+numpy==2.3.5
+fastapi==0.121.2
+uvicorn==0.40.0
+python-multipart==0.0.20
+pytest==9.0.1
