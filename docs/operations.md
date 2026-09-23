@@ -46,15 +46,20 @@ Apple Silicon, Python 3.12.5, HiGHS 1.11.0, one operating year of 35,040 blocks:
 | | Mode A | Mode B |
 |---|---|---|
 | Variables | 490,577 | 490,577 |
-| Constraints | 455,533 | 455,533 |
+| Constraints | 455,534 | 455,534 |
 | Model build | 0.6 s | 0.6 s |
 | Solve | 197 s | 26 s |
 | Certification | ~2 s | ~2 s |
 | Gap | 3.7e-15 | 3.9e-15 |
 
 The variable count includes one diagnostic unserved-load slack per block, bounded to
-zero in every normal run. On a 4-core Linux container (same versions), Mode A took 385 s
-and Mode B 69 s.
+zero in every normal run. The timings and gaps in the table were measured before the
+rooftop limit and the battery warranty constraint were added; the counts are current.
+
+On a 4-core Linux container (same versions), Mode A took 385 s and Mode B 69 s with the
+rooftop limit. Adding the warranty constraint took Mode A to 637 s for the same optimum,
+to within one ulp. That constraint is a single dense row across every discharge variable
+in the year, and HiGHS pays for it even though it is slack on the seeded project.
 
 Mode B is much faster because the capacity columns are pinned, which is what makes the
 slider workflow usable. It is still far too slow for a keystroke, which is why the UI
