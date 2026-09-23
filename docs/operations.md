@@ -61,6 +61,14 @@ rooftop limit. Adding the warranty constraint took Mode A to 637 s for the same 
 to within one ulp. That constraint is a single dense row across every discharge variable
 in the year, and HiGHS pays for it even though it is slack on the seeded project.
 
+With banking on, Mode A is much slower. The run used illustrative rules: monthly
+settlement, an 8% in-kind charge, no drawal 18:00–22:00 local, and deposits capped at 30%
+of monthly load. On the same container it took 2,841 s for 595,697 variables and 525,626
+constraints. It certified at a gap of 1.2e-13, 35,040 / 35,040 blocks checked. The cost
+fell from INR 778.2 M to 740.5 M a year: open-access solar roughly doubled, open-access
+wind all but disappeared, and 19,906 MWh was drawn from 21,637 MWh banked, with nothing
+lapsing. These are illustrative rules, not any state's order.
+
 Mode B is much faster because the capacity columns are pinned, which is what makes the
 slider workflow usable. It is still far too slow for a keystroke, which is why the UI
 debounces, supersedes obsolete jobs and shows the previous result with a stale marker
