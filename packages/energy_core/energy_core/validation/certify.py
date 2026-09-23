@@ -190,6 +190,15 @@ def certify(spec: RunSpec, caps: CapacityResult, dispatch: pd.DataFrame, ledger:
     if p_tot > b.max_c_rate * e_tot + tol.power_mw:
         issues.append(_issue("c_rate", p_tot - b.max_c_rate * e_tot, tol.power_mw, "MW",
                              f"power {p_tot:.4f} MW exceeds {b.max_c_rate} C on {e_tot:.4f} MWh"))
+    if b.max_efc_per_year is not None:
+        checks.append("warranty_throughput")
+        allowed = b.max_efc_per_year * (b.soc_max_frac - b.soc_min_frac) * e_tot
+        excess = float(dis.sum() * dt) - allowed
+        maxres["warranty_throughput"] = max(excess, 0.0)
+        if excess > tol.energy_mwh:
+            issues.append(_issue("warranty_throughput", excess, tol.energy_mwh, "MWh",
+                                 f"discharged {dis.sum() * dt:,.1f} MWh against a warranty "
+                                 f"allowance of {allowed:,.1f} MWh/yr"))
     checks.append("terminal_soc")
     # A cyclic year must not begin with energy it never stored. The recursion above already
     # wraps, so this restates it as an explicit, separately reported condition.

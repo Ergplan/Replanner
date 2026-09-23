@@ -87,8 +87,10 @@ binary appears anywhere.
 
 Wear is priced against throughput: `w = capex_MWh / (EFC · usable_fraction) + vom`. The
 cell annuity recovers the calendar-life replacement; charging both for the same liability
-would be a double count, so wear is a throughput signal only, and the warranty envelope
-is checked separately. Installed energy is kept apart from remaining usable energy, and
+would be a double count, so wear is a throughput signal only. The warranty envelope is a
+separate constraint, `Σ_t d_t Δt ≤ (EFC / L_Q) · usable_fraction · Q_tot`, where `L_Q` is
+the cell life the energy annuity assumes. Cycling faster would wear the cells out before
+that annuity has paid for them. The validator recomputes it (`warranty_throughput`). Installed energy is kept apart from remaining usable energy, and
 no bilinear `capacity × endogenous SOH` product is formed.
 
 ## Certification — `validation/certify.py`

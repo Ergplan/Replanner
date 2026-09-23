@@ -26,7 +26,9 @@ the order in force before quoting anything.
   number of units, which makes Mode A a MILP. Mode B pins capacity to a size already
   checked to be on the grid, so it stays an LP. Battery power and energy are continuous.
 - Storage with one-way efficiencies, SOC bounds, C-rate, auxiliaries, self-discharge, a
-  cyclic terminal rule, and throughput-priced wear.
+  cyclic terminal rule, throughput-priced wear, and a warranty envelope. Annual
+  throughput may not exceed the warranty's equivalent full cycles spread over the cell
+  life the energy annuity assumes.
 - Independent full-resolution certification, and a diagnostic relaxation that locates
   shortfalls in an infeasible scenario.
 

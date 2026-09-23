@@ -185,6 +185,11 @@ def build_model(spec: RunSpec, *, force_binary_blocks: list[int] | None = None,
     m.soc_lo = pyo.Constraint(m.T, rule=soc_lo)
     m.soc_hi = pyo.Constraint(m.T, rule=soc_hi)
 
+    if bat.max_efc_per_year is not None:
+        usable = bat.soc_max_frac - bat.soc_min_frac
+        m.warranty = pyo.Constraint(
+            expr=sum(m.dis[t] for t in T) * dt <= bat.max_efc_per_year * usable * m.be_tot)
+
     if not bat.allow_grid_charging:
         # Electrons are fungible, so the enforceable form of "charge from renewables
         # only" is that charging in a block cannot exceed renewable output in that block.

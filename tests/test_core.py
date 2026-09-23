@@ -107,6 +107,34 @@ def test_battery_arbitrages_a_price_step():
     assert soc.max() - soc.min() == pytest.approx(4.0, abs=1e-6)
 
 
+def test_the_warranty_envelope_caps_throughput():
+    """The same arbitrage, but the warranty allows half a cycle on 4 MWh: 2 MWh shifted."""
+    tar = np.full(96, 10_000.0); tar[:24] = 1_000.0
+    s = tiny_spec(n=96, load_mw=1.0, tariff_inr_per_mwh=tar,
+                  battery=battery(power=1.0, energy=4.0, max_efc=0.5))
+    a = solve_year(s, time_limit_s=30)
+    without = 6 * 1.0 * 1_000.0 + 18 * 1.0 * 10_000.0
+    assert a.outcome.objective == pytest.approx(without - 2.0 * (10_000.0 - 1_000.0))
+    assert a.dispatch["battery_discharge_mw"].sum() * DT == pytest.approx(2.0)
+    rep = certify(s, a.capacities, a.dispatch, a.ledger, solver_objective=a.outcome.objective,
+                  status=a.outcome.status, gap=a.outcome.gap, horizon_blocks=96)
+    assert rep.status is ValidationStatus.CERTIFIED
+    assert "warranty_throughput" in rep.checks_run
+
+
+def test_the_validator_catches_cycling_past_the_warranty():
+    tar = np.full(96, 10_000.0); tar[:24] = 1_000.0
+    free = tiny_spec(n=96, load_mw=1.0, tariff_inr_per_mwh=tar,
+                     battery=battery(power=1.0, energy=4.0))
+    a = solve_year(free, time_limit_s=30)
+    capped = tiny_spec(n=96, load_mw=1.0, tariff_inr_per_mwh=tar,
+                       battery=battery(power=1.0, energy=4.0, max_efc=0.5))
+    rep = certify(capped, a.capacities, a.dispatch, a.ledger,
+                  solver_objective=a.outcome.objective, status=a.outcome.status,
+                  gap=a.outcome.gap, horizon_blocks=96)
+    assert any(i.check == "warranty_throughput" for i in rep.material_issues)
+
+
 def test_round_trip_efficiency_is_applied_once_to_energy():
     tar = np.full(96, 10_000.0); tar[:24] = 1_000.0
     s = tiny_spec(n=96, load_mw=1.0, tariff_inr_per_mwh=tar,

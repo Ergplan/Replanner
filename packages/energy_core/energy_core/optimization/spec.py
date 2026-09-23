@@ -64,6 +64,9 @@ class BatterySpec:
     terminal_rule: str
     initial_soc_frac: float
     allow_grid_charging: bool
+    # Warranty cycles spread over the cell life the energy annuity assumes. Cycling
+    # faster wears the cells out before that annuity has paid for them.
+    max_efc_per_year: float | None = None
 
 
 @dataclass
@@ -242,6 +245,7 @@ def build_spec(inputs: ProjectInputs, frame: pd.DataFrame, operating_year: int,
         warranty_throughput_efc=tech.warranty_throughput_mwh_per_mwh,
         terminal_rule=tech.terminal_soc_rule, initial_soc_frac=tech.initial_soc_frac,
         allow_grid_charging=tech.allow_grid_charging,
+        max_efc_per_year=tech.warranty_throughput_mwh_per_mwh / b.energy_life_years,
     )
 
     def col(name: str, default: float | None = None) -> np.ndarray:

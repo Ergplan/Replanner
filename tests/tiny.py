@@ -51,7 +51,7 @@ def no_battery() -> BatterySpec:
 
 def battery(power=1.0, energy=4.0, eta_c=1.0, eta_d=1.0, wear=0.0, annuity_mw=0.0,
             annuity_mwh=0.0, retention=1.0, soc_min=0.0, soc_max=1.0,
-            grid_charging=True, aux=0.0, c_rate=1.0) -> BatterySpec:
+            grid_charging=True, aux=0.0, c_rate=1.0, max_efc=None) -> BatterySpec:
     return BatterySpec(
         enabled=True, existing_mw=0.0, existing_mwh=0.0, min_mw=0.0, max_mw=power,
         min_mwh=0.0, max_mwh=energy, annuity_inr_per_mw_year=annuity_mw,
@@ -59,7 +59,8 @@ def battery(power=1.0, energy=4.0, eta_c=1.0, eta_d=1.0, wear=0.0, annuity_mw=0.
         eta_charge=eta_c, eta_discharge=eta_d, retention_per_block=retention,
         soc_min_frac=soc_min, soc_max_frac=soc_max, max_c_rate=c_rate, aux_frac_of_power=aux,
         wear_inr_per_mwh_discharged=wear, warranty_throughput_efc=6000.0,
-        terminal_rule="cyclic", initial_soc_frac=0.0, allow_grid_charging=grid_charging)
+        terminal_rule="cyclic", initial_soc_frac=0.0, allow_grid_charging=grid_charging,
+        max_efc_per_year=max_efc)
 
 
 def solar(profile, cap_max=10.0, annuity=0.0, loss=0.0, existing=0.0,
