@@ -80,7 +80,14 @@ on screen. Near-zero flows are hidden rather than drawn faint.
 UI from nothing — projection maths, the primitives in full, drawing and motion rules, the
 collision sweep, and the mistakes already paid for.
 
-## Quick start
+## Using it
+
+Start the worker, API and web app (`make worker`, `make api`, `make web`) and open
+http://localhost:3210/setup. Create a project from the sample and enter your site,
+tariff and technology costs. Upload a year of load, then **Save and find optimum**.
+`docs/operations.md` walks through each step.
+
+## Quick start (command line)
 
 ```bash
 ./.venv/bin/python datasets/synthetic/generator.py

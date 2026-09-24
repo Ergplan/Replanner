@@ -10,8 +10,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import IsoTwin, { Flows, Sizes } from '@/components/IsoTwin';
 import { CostBars, DayChart, MonthlyChart, SocChart, YearChart } from '@/components/Charts';
-import { api, Block, DayRow, Job, ProjectMeta, RunSummary } from '@/lib/api';
+import { ACTIVE_JOB, api, Block, DayRow, Job, ProjectMeta, RunSummary } from '@/lib/api';
 import { crore, inr, istDate, istLabel, mw, num, pct } from '@/lib/format';
+import { projectFromUrl, SAMPLE_ID } from '@/lib/projects';
 
 const BLOCKS_PER_DAY = 96;
 const CAP_KEYS = ['solar_onsite_mw', 'solar_remote_mw', 'wind_remote_mw',
@@ -42,23 +43,74 @@ export default function Page() {
 
   const submitted = useRef<string | null>(null);   // the job we are currently willing to accept
 
+  const [staleOptima, setStaleOptima] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+
+  const adoptBaseline = useCallback((full: RunSummary) => {
+    setBaseline(full); setShown(full); setStale(false);
+    setCaps(Object.fromEntries(
+      CAP_KEYS.map((k) => [k, num0(full.capacities[k])])) as Record<CapKey, number>);
+  }, []);
+
+  const [pid, setPid] = useState(SAMPLE_ID);
+
+  const startOptimum = useCallback(async (id: string) => {
+    try {
+      setErr(null);
+      const { job_id, status } = await api.submit({ project_id: id, mode: 'find_optimum' });
+      submitted.current = job_id;
+      setJob({ job_id, status, mode: 'find_optimum', run_id: null, message: '',
+               input_fingerprint: null, baseline_run_id: null, created_at: Date.now() / 1000 });
+    } catch (e) { setErr(String(e)); }
+  }, []);
+  const findOptimum = useCallback(() => startOptimum(pid), [pid, startOptimum]);
+
   // ---- discover the certified optimum ----------------------------------------
+  // Only an optimum solved on today's inputs is a baseline. One solved before the inputs
+  // or the model changed would price every manual scenario against the wrong answer.
   useEffect(() => {
+    const id = projectFromUrl();
+    setPid(id);
     (async () => {
       try {
-        const [m, list] = await Promise.all([api.project(), api.runs()]);
+        const [m, list, jobs] = await Promise.all([api.project(id), api.runs(id), api.jobs(id)]);
         setMeta(m); setRuns(list);
-        const opt = list.find((r) => r.mode === 'find_optimum'
+        const certified = list.filter((r) => r.mode === 'find_optimum'
           && r.validation_status?.startsWith('certified'));
-        if (opt) {
-          const full = await api.run(opt.run_id);
-          setBaseline(full); setShown(full);
-          setCaps(Object.fromEntries(
-            CAP_KEYS.map((k) => [k, num0(full.capacities[k])])) as Record<CapKey, number>);
+        const current = certified.filter((r) =>
+          !m.input_fingerprint || r.input_fingerprint === m.input_fingerprint);
+        setStaleOptima(certified.length - current.length);
+        if (current.length) adoptBaseline(await api.run(current[0].run_id));
+        // A solve started elsewhere (another tab, the command line) is picked up rather
+        // than ignored, so the page fills in when it lands.
+        const running = jobs.find((j) => j.mode === 'find_optimum'
+          && ACTIVE_JOB.includes(j.status));
+        if (running && !current.length) { submitted.current = running.job_id; setJob(running); }
+        // Arriving from "Save and find optimum" starts the solve, unless there is already
+        // an answer for these inputs or one on the way.
+        const url = new URL(window.location.href);
+        if (url.searchParams.get('solve') === '1') {
+          url.searchParams.delete('solve');
+          window.history.replaceState(null, '', url.toString());
+          if (!current.length && !running && !m.problems.length) await startOptimum(id);
         }
-      } catch (e) { setErr(String(e)); }
+      } catch (e) { setErr(`Cannot reach the solver service: ${String(e)}`); }
     })();
-  }, []);
+  }, [adoptBaseline, startOptimum]);
+
+  const cancelJob = useCallback(async () => {
+    if (!job) return;
+    try { setJob(await api.cancel(job.job_id)); } catch (e) { setErr(String(e)); }
+  }, [job]);
+
+  const jobActive = !!job && ACTIVE_JOB.includes(job.status);
+  useEffect(() => {
+    if (!jobActive) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [jobActive]);
+  const elapsed = job && jobActive
+    ? Math.max(0, now / 1000 - (job.started_at ?? job.created_at ?? now / 1000)) : null;
 
   // ---- windowed dispatch for the selected day --------------------------------
   useEffect(() => {
@@ -92,13 +144,14 @@ export default function Page() {
     try {
       setErr(null);
       const { job_id } = await api.submit({
-        mode: 'manual', capacities: next, baseline_run_id: baseline?.run_id ?? null });
+        project_id: pid, mode: 'manual', capacities: next,
+        baseline_run_id: baseline?.run_id ?? null });
       submitted.current = job_id;                 // anything older is now obsolete
       setJob({ job_id, status: 'queued', mode: 'manual', run_id: null, message: '',
                input_fingerprint: null, baseline_run_id: baseline?.run_id ?? null });
       setStale(true);
     } catch (e) { setErr(String(e)); }
-  }, [baseline]);
+  }, [baseline, pid]);
 
   // Debounce the sliders, and supersede rather than queue a run per keystroke.
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -112,12 +165,23 @@ export default function Page() {
 
   // ---- poll the active job ----------------------------------------------------
   useEffect(() => {
-    if (!job || ['succeeded', 'failed', 'cancelled'].includes(job.status)) return;
+    if (!job || !ACTIVE_JOB.includes(job.status)) return;
     const id = setInterval(async () => {
       try {
         const j = await api.job(job.job_id);
         if (submitted.current !== j.job_id) return;      // a newer scenario has replaced this
         setJob(j);
+        if (j.status === 'succeeded' && j.run_id && j.mode === 'find_optimum') {
+          const full = await api.run(j.run_id);
+          if (full.validation_status?.startsWith('certified')) {
+            adoptBaseline(full); setMode('find_optimum');
+          } else {
+            setErr(`The optimum solved but did not certify (${full.validation_status ?? 'no report'}); `
+              + 'it is not used as a baseline.');
+          }
+          setRuns(await api.runs(pid));
+          return;
+        }
         if (j.status === 'succeeded' && j.run_id) {
           const full = await api.run(j.run_id);
           // Only adopt a result whose inputs match the baseline it will be compared to.
@@ -126,7 +190,7 @@ export default function Page() {
             return;
           }
           setShown(full); setStale(false);
-          setRuns(await api.runs());
+          setRuns(await api.runs(pid));
         }
         if (j.status === 'failed') {
           // An infeasible scenario has something useful to say; fetch the diagnostic.
@@ -154,10 +218,11 @@ export default function Page() {
       } catch { /* the poll simply retries */ }
     }, 1200);
     return () => clearInterval(id);
-  }, [job, baseline]);
+  }, [job, baseline, adoptBaseline, pid]);
 
   // ---- derived ------------------------------------------------------------------
   const block = rows[cursor];
+  const noData = rows.length === 0;
   const flows: Flows = useMemo(() => {
     const v = (k: string) => num0(block?.[k]);
     const useCols = block ? Object.keys(block).filter((k) => k.startsWith('use_')) : [];
@@ -245,17 +310,22 @@ export default function Page() {
       <header className="topbar">
         <div className="brand"><b>joule</b>Wise</div>
         <div className="eyebrow">ergOS · least-cost planning and dispatch</div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+        <nav style={{ marginLeft: 'auto', display: 'flex', gap: 14, alignItems: 'center' }}>
+          <a className="eyebrow" href={`/setup?project=${pid}`}>1 · Setup</a>
+          <span className="eyebrow" style={{ color: 'var(--text-strong)' }}>2 · Optimise &amp; explore</span>
           <span className="badge info">planning &amp; simulation twin</span>
           {meta?.illustrative_only && <span className="badge warn">synthetic data</span>}
-        </div>
+        </nav>
       </header>
 
       <p className="note" style={{ marginTop: 14 }}>
-        This is a planning and simulation digital twin. Playback steps through solved
-        15-minute records; it is not live plant telemetry and it does not control equipment.
-        The seeded dataset is illustrative — not metered load, not a vendor quotation, and
-        not a statement of any statutory charge.
+        {meta && <><strong style={{ color: 'var(--text-strong)' }}>{meta.name}</strong>
+          {meta.sample ? ' — the sample project. ' : ` — operating year ${meta.year}. `}
+          <a href={`/setup?project=${pid}`}>{meta.sample ? 'Set up your own site' : 'Edit inputs'}</a>. </>}
+        Playback steps through solved 15-minute records; it is not live plant telemetry and it
+        does not control equipment.
+        {meta?.illustrative_only && ' Every series here is illustrative sample data — not metered '
+          + 'load, not a vendor quotation, and not a statement of any statutory charge.'}
       </p>
 
       <div className="tabs" role="tablist">
@@ -274,6 +344,52 @@ export default function Page() {
         <span style={{ fontSize: 12 }}>{err}</span>
       </div>}
 
+      {!baseline && meta && (
+        <div className="card" style={{ borderLeft: '3px solid var(--amber-600)' }}>
+          {jobActive && job?.mode === 'find_optimum' ? (
+            <>
+              <h3>Finding the least-cost design</h3>
+              <p className="hint">
+                {job.status === 'queued'
+                  ? `Queued for ${clock(elapsed)}, waiting for the solver worker.`
+                    + ((elapsed ?? 0) > 10 ? ' If this does not change, check that `make worker` is running.' : '')
+                  : `Solving every 15-minute block of the year: ${clock(elapsed)} so far. This `
+                    + 'usually takes 3–10 minutes. The page fills in once the result is certified. '
+                    + 'The solver does not report progress, so none is shown.'}
+              </p>
+              <button className="act ghost" onClick={cancelJob}>Cancel</button>
+            </>
+          ) : (
+            <>
+              <h3>No certified optimum for these inputs yet</h3>
+              <p className="hint">
+                Playback, charts and manual scenarios all read from a solved, certified run.
+                Start by finding the least-cost design for the current inputs.
+                {staleOptima > 0 && ` ${staleOptima} earlier optimum run${staleOptima > 1 ? 's were' : ' was'} `
+                  + 'solved on different inputs or an older model and is not used.'}
+              </p>
+              {meta.problems.length === 0 ? (
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <button className="act" onClick={findOptimum}>Find optimum</button>
+                  <a className="act ghost" href={`/setup?project=${pid}`}
+                     style={{ textDecoration: 'none' }}>Review inputs first</a>
+                </div>
+              ) : (
+                <>
+                  <p className="hint" style={{ color: 'var(--red-600)' }}>
+                    The solver cannot run these inputs yet:</p>
+                  <ul style={{ margin: '4px 0 8px', paddingLeft: 18, fontSize: 12 }}>
+                    {meta.problems.map((p) => <li key={p}>{p}</li>)}
+                  </ul>
+                  <a className="act" href={`/setup?project=${pid}`}
+                     style={{ textDecoration: 'none' }}>Fix in Setup</a>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <div className="grid">
         {/* ---------------- left: capacities ---------------- */}
         <div>
@@ -289,6 +405,10 @@ export default function Page() {
                 Fixed on the backend and dispatch re-optimised against them. Capital and
                 fixed O&amp;M for what you choose stay in the total.
               </p>
+            )}
+            {!caps && (
+              <p className="hint">The sliders appear once the optimum is found. A manual
+                scenario is priced against it.</p>
             )}
             {caps && CAP_KEYS.map((k) => {
               const [lo, hi, step] = capBounds[k];
@@ -313,8 +433,8 @@ export default function Page() {
               <button className="act ghost" onClick={resetToOptimum} disabled={!baseline}>
                 Reset to optimum
               </button>
-              {job && !['succeeded', 'failed', 'cancelled'].includes(job.status) && (
-                <button className="act ghost" onClick={() => api.cancel(job.job_id)}>Cancel</button>
+              {jobActive && (
+                <button className="act ghost" onClick={cancelJob}>Cancel</button>
               )}
             </div>
           </div>
@@ -322,7 +442,10 @@ export default function Page() {
           <div className="card">
             <h3>Solve</h3>
             <div className="row"><span>Job</span>
-              <span className="n">{job ? `${job.status}` : 'idle'}</span></div>
+              <span className="n">{job
+                ? `${job.mode === 'find_optimum' ? 'optimum' : 'scenario'} · ${job.status}`
+                  + (elapsed != null ? ` · ${clock(elapsed)}` : '')
+                : 'idle'}</span></div>
             <div className="row"><span>Solver</span>
               <span className="n">{shown?.status ?? '—'}</span></div>
             <div className="row"><span>Gap</span>
@@ -335,6 +458,12 @@ export default function Page() {
               Showing the previous result while a new scenario solves. No progress bar is
               shown because the solver does not report one.
             </p>}
+            {baseline && (
+              <button className="act ghost" style={{ marginTop: 10 }} onClick={findOptimum}
+                      disabled={jobActive}>
+                Re-solve optimum
+              </button>
+            )}
           </div>
         </div>
 
@@ -342,28 +471,32 @@ export default function Page() {
         <div>
           <IsoTwin flows={flowsWithSoc} sizes={sizes} stamp={stamp} mode={mode} />
           <div className="transport">
-            <button className="act" onClick={() => setPlaying((p) => !p)}>
+            <button className="act" onClick={() => setPlaying((p) => !p)} disabled={noData}>
               {playing ? 'Pause' : 'Play'}
             </button>
-            <button className="act ghost" onClick={() => setCursor((c) => Math.max(0, c - 1))}>
+            <button className="act ghost" disabled={noData}
+                    onClick={() => setCursor((c) => Math.max(0, c - 1))}>
               ◀ block
             </button>
-            <button className="act ghost"
+            <button className="act ghost" disabled={noData}
                     onClick={() => setCursor((c) => Math.min(BLOCKS_PER_DAY - 1, c + 1))}>
               block ▶
             </button>
             <input type="range" min={0} max={BLOCKS_PER_DAY - 1} value={cursor}
-                   aria-label="block within the day"
+                   aria-label="block within the day" disabled={noData}
                    onChange={(e) => setCursor(Number(e.target.value))} />
             <span className="t">{stamp}</span>
             <label className="eyebrow" htmlFor="day">day</label>
             <input id="day" type="number" min={0} max={Math.max(0, days.length - 1)} value={day}
-                   style={{ width: 70 }} onChange={(e) => setDay(Number(e.target.value))} />
+                   style={{ width: 70 }} disabled={noData}
+                   onChange={(e) => setDay(Math.min(Math.max(0, Number(e.target.value) || 0),
+                                                    Math.max(0, days.length - 1)))} />
             <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))}
-                    aria-label="playback speed">
+                    aria-label="playback speed" disabled={noData}>
               {SPEEDS.map((s) => <option key={s} value={s}>{s}×</option>)}
             </select>
-            <button className="act ghost" onClick={() => setShowTable((s) => !s)}>
+            <button className="act ghost" disabled={noData}
+                    onClick={() => setShowTable((s) => !s)}>
               {showTable ? 'Hide table' : 'Table view'}
             </button>
           </div>
@@ -481,6 +614,12 @@ export default function Page() {
       </div>
     </div>
   );
+}
+
+function clock(seconds: number | null): string {
+  if (seconds == null) return '—';
+  const s = Math.floor(seconds);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 function Kpi({ k, v, s }: { k: string; v: string; s?: string }) {

@@ -9,6 +9,16 @@ additional surcharge, scheduling — is written as configurable, effective-dated
 precisely because those are set by state commission orders and change. Replace them with
 the order in force before quoting anything.
 
+## Your data and the sample's
+
+A project you create starts as a copy of the sample, and everything you type or upload
+replaces the sample value. Anything you have not replaced is still sample data, and the
+setup page says so, series by series. Only the load profile can be uploaded so far.
+Rooftop, open-access solar and wind output per MW, and exchange prices, always come from a
+synthetic western-India year; replacing them is not supported yet.
+Grid availability is the exception. A user project assumes the grid never fails, because
+the sample's six-hour July outage is a solver test case, not a fact about any real site.
+
 ## Supported
 
 - One operating year at full 15-minute chronology, 35,040 blocks (35,136 in a leap year).

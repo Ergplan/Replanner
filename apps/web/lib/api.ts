@@ -36,10 +36,13 @@ export type DayRow = {
 export type Job = {
   job_id: string; status: string; mode: string; run_id: string | null;
   message: string; input_fingerprint: string | null; baseline_run_id: string | null;
+  created_at?: number; started_at?: number | null; finished_at?: number | null;
 };
+export const ACTIVE_JOB = ['queued', 'running', 'cancelling'];
 export type ProjectMeta = {
   project_id: string; name: string; timezone: string; currency: string;
-  provenance: string; illustrative_only: boolean;
+  provenance: string; illustrative_only: boolean; sample: boolean; year: number;
+  problems: string[];                   // inputs the solver cannot run, fixed in Setup
   site: Record<string, number>;
   options: Record<string, { min_mw: number; max_mw: number; step_mw: number | null;
     enabled: boolean; technology: string; route: string }>;
@@ -47,6 +50,7 @@ export type ProjectMeta = {
     max_energy_mwh: number; max_c_rate: number };
   tariff: { contract_demand_mw: number; demand_basis: string; duty_frac: number };
   finance: Record<string, unknown>;
+  input_fingerprint: string | null;     // what a run on today's inputs is fingerprinted as
 };
 
 const base = '/api';
@@ -56,23 +60,29 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return r.json() as Promise<T>;
 }
 
+const q = encodeURIComponent;
 export const api = {
   health: () => get<{ ok: boolean; runs: number }>('/health'),
-  project: (year = 2026) => get<ProjectMeta>(`/project?year=${year}`),
-  runs: () => get<RunSummary[]>('/runs'),
+  project: (pid: string) => get<ProjectMeta>(`/project?project_id=${q(pid)}`),
+  runs: (pid?: string) => get<RunSummary[]>(pid ? `/runs?project_id=${q(pid)}` : '/runs'),
   run: (id: string) => get<RunSummary>(`/runs/${id}`),
   dispatch: (id: string, start: number, limit: number, signal?: AbortSignal) =>
     get<DispatchWindow>(`/runs/${id}/dispatch?start=${start}&limit=${limit}`, signal),
   daily: (id: string) => get<{ run_id: string; days: DayRow[] }>(`/runs/${id}/daily`),
   job: (id: string) => get<Job>(`/jobs/${id}`),
-  submit: async (body: { mode: string; capacities?: Record<string, number>;
-                         baseline_run_id?: string | null; year?: number }) => {
+  jobs: (pid: string) => get<Job[]>(`/jobs?project_id=${q(pid)}`),
+  submit: async (body: { project_id: string; mode: string; capacities?: Record<string, number>;
+                         baseline_run_id?: string | null }) => {
     const r = await fetch(`${base}/scenarios`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ year: 2026, ...body }),
+      body: JSON.stringify(body),
     });
     if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
     return r.json() as Promise<{ job_id: string; status: string }>;
   },
-  cancel: (id: string) => fetch(`${base}/jobs/${id}/cancel`, { method: 'POST' }),
+  cancel: async (id: string) => {
+    const r = await fetch(`${base}/jobs/${id}/cancel`, { method: 'POST' });
+    if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
+    return r.json() as Promise<Job>;
+  },
 };

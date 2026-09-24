@@ -172,10 +172,10 @@ h1, h2, h3, .display { font-family: var(--font-display), system-ui, sans-serif; 
 .slider .bounds { display: flex; justify-content: space-between; font-family: var(--font-mono);
   font-size: 9.5px; color: var(--text-faint); margin-top: 2px; }
 
-button.act { font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em;
+button.act, a.act { display: inline-block; text-decoration: none; font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em;
   text-transform: uppercase; padding: 9px 14px; border-radius: 3px; cursor: pointer;
   border: 1px solid var(--charcoal-900); background: var(--charcoal-900); color: var(--gold-200); }
-button.act.ghost { background: transparent; color: var(--text-body); border-color: var(--border-default); }
+button.act.ghost, a.act.ghost { background: transparent; color: var(--text-body); border-color: var(--border-default); }
 button.act:disabled { opacity: .45; cursor: not-allowed; }
 
 .stage { background: var(--charcoal-900); border-radius: 4px; overflow: hidden; position: relative; }

@@ -7,9 +7,11 @@ export const inr = (v: number | null | undefined, d = 0) =>
 export const crore = (v: number | null | undefined, d = 2) =>
   v == null || !Number.isFinite(v) ? '—' : `${v < 0 ? '−' : ''}₹${(Math.abs(v) / 1e7).toFixed(d)} Cr`;
 
+// Solver output lands a rounding error either side of zero; -1e-10 must read "0.00", not "-0.00".
 export const num = (v: number | null | undefined, d = 2) =>
   v == null || !Number.isFinite(v) ? '—'
-    : v.toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
+    : (Math.abs(v) < 0.5 * 10 ** -d ? 0 : v)
+      .toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
 
 export const mw = (v: number | null | undefined, d = 2) => `${num(v, d)} MW`;
 export const mwh = (v: number | null | undefined, d = 1) => `${num(v, d)} MWh`;
