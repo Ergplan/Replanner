@@ -13,11 +13,15 @@ the order in force before quoting anything.
 
 A project you create starts as a copy of the sample, and everything you type or upload
 replaces the sample value. Anything you have not replaced is still sample data, and the
-setup page says so, series by series. Only the load profile can be uploaded so far.
-Rooftop, open-access solar and wind output per MW, and exchange prices, always come from a
-synthetic western-India year; replacing them is not supported yet.
-Grid availability is the exception. A user project assumes the grid never fails, because
-the sample's six-hour July outage is a solver test case, not a fact about any real site.
+setup page says so, series by series. Each series can be replaced by upload: load (kW, MW
+or kWh per interval), rooftop, open-access solar and wind output per unit of capacity
+(fraction or %), exchange prices (INR per kWh or per MWh, negative prices allowed) and
+grid availability. A value that is physically impossible for its series, such as output
+above capacity or negative load, is refused rather than clipped.
+
+Grid availability is the one series that does not fall back to the sample. Until you
+upload it, a user project assumes the grid never fails, because the sample's six-hour
+July outage is a solver test case, not a fact about any real site.
 
 ## Supported
 

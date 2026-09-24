@@ -2,8 +2,9 @@
 
 export type ProjectListItem = { project_id: string; name: string; sample: boolean };
 export type SeriesStatus = {
-  column: string; label: string; source: string;
-  annual_mwh?: number; peak_mw?: number; annual_cf?: number; outage_hours?: number; mean?: number;
+  column: string; label: string; source: string; units: string[];
+  annual_mwh?: number; peak_mw?: number; annual_cf?: number; outage_hours?: number;
+  mean?: number; min?: number; max?: number;
 };
 // The full ProjectInputs document, edited in place and sent back whole. The backend
 // schema is the authority on what is valid, so it is not re-typed field by field here.
@@ -14,9 +15,10 @@ export type ProjectDoc = {
 };
 export type FieldError = { field: string; message: string };
 export type UploadSummary = {
-  ok: boolean; errors: string[]; warnings: string[]; resolution_min: number | null;
+  ok: boolean; column: string; errors: string[]; warnings: string[]; resolution_min: number | null;
   rows_read: number; rows_used: number; time_column: string; value_column: string;
   blocks?: number; annual_mwh?: number; peak_mw?: number; mean_mw?: number;
+  annual_cf?: number; outage_hours?: number; mean?: number; min?: number; max?: number;
 };
 
 export class ApiError extends Error {
@@ -41,11 +43,11 @@ export const projects = {
   create: (name: string) => call<{ project_id: string }>('/projects', json('POST', { name })),
   get: (pid: string) => call<ProjectDoc>(`/projects/${pid}`),
   save: (pid: string, inputs: Inputs) => call<ProjectDoc>(`/projects/${pid}/inputs`, json('PUT', inputs)),
-  uploadLoad: (pid: string, file: File, unit: string) => {
+  uploadSeries: (pid: string, column: string, file: File, unit: string) => {
     const fd = new FormData();
     fd.append('file', file);
     fd.append('unit', unit);
-    return call<UploadSummary>(`/projects/${pid}/series/load_mw`, { method: 'POST', body: fd });
+    return call<UploadSummary>(`/projects/${pid}/series/${column}`, { method: 'POST', body: fd });
   },
   useSample: (pid: string, column: string) =>
     call<ProjectDoc>(`/projects/${pid}/series/${column}`, { method: 'DELETE' }),

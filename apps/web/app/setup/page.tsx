@@ -24,7 +24,7 @@ const TECH_LABEL: Record<string, string> = {
 };
 
 const SECTIONS = [
-  ['site', 'Site'], ['existing', 'Existing plant'], ['load', 'Load profile'],
+  ['site', 'Site'], ['existing', 'Existing plant'], ['load', 'Load & profiles'],
   ['tariff', 'Utility tariff'], ['oa', 'Open access & market'],
   ['tech', 'Technologies & costs'], ['finance', 'Finance'],
 ] as const;
@@ -266,12 +266,12 @@ export default function Setup() {
 
           {/* 3 ---------------------------------------------------------------- */}
           <section id="load" className={`card ${s.section}`}>
-            <h2>3 · Load profile</h2>
-            <p>A year of the site&apos;s demand for {year}. Upload a meter export, or keep the sample
-              profile to explore. Solar, wind and exchange prices use sample profiles for a
-              western-India site; uploading your own is not supported yet.</p>
-            <LoadPanel pid={pid} proj={proj} ro={ro} dirty={dirty}
-                       onChange={(doc) => { setProj(doc); }} onMsg={setMsg} />
+            <h2>3 · Load &amp; profiles</h2>
+            <p>A year of the site&apos;s demand for {year}, and the output and price profiles the
+              optimiser plans against. Anything you have not uploaded uses a sample year for a
+              western-India site, so upload at least your own load before trusting a result.</p>
+            <SeriesPanel pid={pid} proj={proj} ro={ro} dirty={dirty}
+                         onChange={(doc) => { setProj(doc); }} onMsg={setMsg} />
           </section>
 
           {/* 4 ---------------------------------------------------------------- */}
@@ -550,21 +550,51 @@ function RangeCell({ c, path, lo, hi }: { c: Ctx; path: string; lo: number; hi: 
   );
 }
 
-function LoadPanel({ pid, proj, ro, dirty, onChange, onMsg }: {
+const UNIT_LABEL: Record<string, string> = {
+  kW: 'kW (average demand)', MW: 'MW (average demand)', kWh: 'kWh per interval',
+  fraction: 'fraction of capacity, 0–1', '%': '% of capacity',
+  'INR/kWh': '₹/kWh', 'INR/MWh': '₹/MWh (as the exchange publishes)',
+};
+const SERIES_HELP: Record<string, string> = {
+  load_mw: 'A meter export of the whole site.',
+  solar_onsite_cf: 'Output of a rooftop plant divided by its MWp: a PVsyst export or a year of generation data from a nearby roof.',
+  solar_remote_cf: 'Output per MW at the open-access site, after inverter losses and before wheeling losses.',
+  wind_remote_cf: 'Output per MW at the wind site, from the developer\'s yield assessment or metered data.',
+  iex_buy_inr_per_kwh: 'Day-ahead market clearing prices for your region, or a forecast of them.',
+  grid_available: '1 when the grid is up, 0 during an outage. Without it the grid is assumed never to fail.',
+};
+
+const rs = (v?: number) => (v == null ? '—' : `${v < 0 ? '−' : ''}₹${Math.abs(v).toFixed(2)}`);
+
+function amount(x: { annual_mwh?: number; peak_mw?: number; annual_cf?: number;
+  outage_hours?: number; mean?: number; min?: number; max?: number }): string {
+  if (x.annual_mwh != null) return `${Math.round(x.annual_mwh).toLocaleString('en-IN')} MWh/yr, peak ${x.peak_mw?.toFixed(2)} MW`;
+  if (x.annual_cf != null) return `${(x.annual_cf * 100).toFixed(1)}% average output`;
+  if (x.outage_hours != null) return x.outage_hours ? `${x.outage_hours} h of outage` : 'no outages';
+  if (x.mean != null) return `${rs(x.mean)}/kWh average, ${rs(x.min)} to ${rs(x.max)}`;
+  return '';
+}
+
+function SeriesPanel({ pid, proj, ro, dirty, onChange, onMsg }: {
   pid: string; proj: ProjectDoc; ro: boolean; dirty: boolean;
   onChange: (doc: ProjectDoc) => void; onMsg: (m: string | null) => void;
 }) {
+  const [open, setOpen] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [unit, setUnit] = useState('kW');
+  const [unit, setUnit] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<UploadSummary | null>(null);
-  const load = useMemo(() => proj.series.find((x) => x.column === 'load_mw'), [proj]);
+  const row = useMemo(() => proj.series.find((x) => x.column === open), [proj, open]);
 
+  const start = (column: string) => {
+    const r = proj.series.find((x) => x.column === column);
+    setOpen(column); setFile(null); setResult(null); setUnit(r?.units[0] ?? '');
+  };
   const upload = async () => {
-    if (!file) return;
+    if (!file || !open) return;
     setBusy(true); setResult(null);
     try {
-      setResult(await projects.uploadLoad(pid, file, unit));
+      setResult(await projects.uploadSeries(pid, open, file, unit));
       onChange(await projects.get(pid));
     } catch (e) {
       if (e instanceof ApiError && e.status === 400 && typeof e.detail === 'object') {
@@ -572,45 +602,56 @@ function LoadPanel({ pid, proj, ro, dirty, onChange, onMsg }: {
       } else onMsg(`Upload failed: ${e}`);
     } finally { setBusy(false); }
   };
+  const revert = async (column: string) => {
+    setBusy(true);
+    try { onChange(await projects.useSample(pid, column)); setResult(null); }
+    catch (e) { onMsg(String(e)); } finally { setBusy(false); }
+  };
 
   return (
     <>
       <table className="data" style={{ marginBottom: 12 }}>
-        <thead><tr><th>series</th><th>source</th><th>amount</th></tr></thead>
+        <thead><tr><th>series</th><th>source</th><th>amount</th>{!ro && <th />}</tr></thead>
         <tbody>
           {proj.series.map((x) => (
-            <tr key={x.column}>
+            <tr key={x.column} style={open === x.column ? { background: 'var(--gold-50)' } : undefined}>
               <td>{x.label}</td>
-              <td>{x.source}</td>
-              <td>{x.annual_mwh != null ? `${Math.round(x.annual_mwh).toLocaleString('en-IN')} MWh/yr, peak ${x.peak_mw?.toFixed(2)} MW`
-                : x.annual_cf != null ? `${(x.annual_cf * 100).toFixed(1)}% average output`
-                : x.outage_hours != null ? `${x.outage_hours} h of outage`
-                : x.mean != null ? `₹${x.mean.toFixed(2)}/kWh average` : ''}</td>
+              <td style={{ color: x.source === 'uploaded' ? 'var(--green-700)' : undefined }}>{x.source}</td>
+              <td>{amount(x)}</td>
+              {!ro && (
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <button className="act ghost" style={{ padding: '4px 8px' }} disabled={busy}
+                          onClick={() => start(x.column)}>
+                    {x.source === 'uploaded' ? 'Replace' : 'Upload'}</button>
+                  {x.source === 'uploaded' && (
+                    <button className="act ghost" style={{ padding: '4px 8px', marginLeft: 6 }}
+                            disabled={busy} onClick={() => revert(x.column)}>
+                      {x.column === 'grid_available' ? 'Assume always up' : 'Use sample'}</button>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
       </table>
-      {ro ? <p className="hint">Create your own project to upload a load profile.</p> : (
-        <>
-          <div className={s.inline}>
-            <input type="file" accept=".csv,text/csv" aria-label="load profile CSV"
+      {ro && <p className="hint">Create your own project to upload your own series.</p>}
+      {!ro && open && row && (
+        <div className="card" style={{ borderLeft: '3px solid var(--gold-500)' }}>
+          <strong style={{ fontSize: 12 }}>Upload: {row.label}</strong>
+          <p className="hint" style={{ marginTop: 4 }}>{SERIES_HELP[row.column]}</p>
+          <div className={s.inline} style={{ marginTop: 8 }}>
+            <input type="file" accept=".csv,text/csv" aria-label={`${row.label} CSV`}
                    onChange={(e) => { setFile(e.target.files?.[0] ?? null); setResult(null); }} />
             <label className="eyebrow" htmlFor="unit">values are</label>
             <select id="unit" value={unit} onChange={(e) => setUnit(e.target.value)}>
-              <option value="kW">kW (average demand)</option>
-              <option value="MW">MW (average demand)</option>
-              <option value="kWh">kWh per interval</option>
+              {row.units.map((u) => <option key={u} value={u}>{UNIT_LABEL[u] ?? u}</option>)}
             </select>
             <button className="act" onClick={upload} disabled={!file || busy}>
-              {busy ? 'Checking…' : 'Upload load profile'}</button>
-            {load?.source === 'uploaded' && (
-              <button className="act ghost" disabled={busy}
-                      onClick={async () => onChange(await projects.useSample(pid, 'load_mw'))}>
-                Use the sample load instead</button>
-            )}
+              {busy ? 'Checking…' : 'Check & upload'}</button>
+            <button className="act ghost" onClick={() => { setOpen(null); setResult(null); }}>Close</button>
           </div>
           <p className="hint">
-            A CSV with a timestamp column and a load column, covering every 15-minute, 30-minute
+            A CSV with a timestamp column and a value column, covering every 15-minute, 30-minute
             or hourly interval of {proj.year} in IST (interval start). Extra rows outside the year
             are ignored; gaps are refused rather than filled.
             {dirty && ' Save your other changes first if you changed the operating year.'}
@@ -621,8 +662,7 @@ function LoadPanel({ pid, proj, ro, dirty, onChange, onMsg }: {
                 <p style={{ margin: 0, fontSize: 12 }}>
                   Loaded {result.rows_used.toLocaleString('en-IN')} rows at {result.resolution_min}-minute
                   resolution from <code>{result.time_column}</code> / <code>{result.value_column}</code>:
-                  {' '}{Math.round(result.annual_mwh ?? 0).toLocaleString('en-IN')} MWh a year, peak
-                  {' '}{result.peak_mw?.toFixed(2)} MW.
+                  {' '}{amount(result)}.
                 </p>
               ) : (
                 <>
@@ -639,7 +679,7 @@ function LoadPanel({ pid, proj, ro, dirty, onChange, onMsg }: {
               )}
             </div>
           )}
-        </>
+        </div>
       )}
     </>
   );

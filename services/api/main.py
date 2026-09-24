@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT / "datasets" / "synthetic"))
 import jobs as J  # noqa: E402
 import projects as P  # noqa: E402
 from energy_core import MODEL_VERSION  # noqa: E402
-from energy_core.ingestion import parse_load_csv  # noqa: E402
+from energy_core.ingestion import parse_series_csv  # noqa: E402
 from energy_core.optimization import UnsupportedInput, build_spec  # noqa: E402
 from energy_core.optimization.supported import (  # noqa: E402
     CAP_KEY_BY_TECH, capacity_limits, unsupported_input_problems,
@@ -169,17 +169,20 @@ def put_inputs(pid: str, body: dict):
     return get_project(pid)
 
 
-@app.post("/projects/{pid}/series/load_mw")
-async def upload_load(pid: str, file: UploadFile, unit: str = Form("kW")):
-    if unit not in ("kW", "MW", "kWh"):
-        raise HTTPException(400, "unit must be kW, MW or kWh")
+@app.post("/projects/{pid}/series/{column}")
+async def upload_series(pid: str, column: str, file: UploadFile, unit: str = Form("")):
+    """Replace one series with the user's own. Refused, with the exact reason, if the
+    file has gaps, duplicates or values outside what the series can physically be."""
+    if column not in P.SERIES:
+        raise HTTPException(404, f"no series {column}")
     inp = _inputs(pid)
     year = P.operating_year(inp)
-    r = parse_load_csv(await file.read(), year, tz=inp.project.timezone, unit=unit)
+    r = parse_series_csv(await file.read(), year, column=column, unit=unit or None,
+                         tz=inp.project.timezone)
     if not r.ok:
         raise HTTPException(400, r.summary())
     try:
-        P.save_series(pid, year, "load_mw", r.load_mw)
+        P.save_series(pid, year, column, r.values)
     except P.SampleIsReadOnly as exc:
         raise HTTPException(403, str(exc))
     return r.summary()

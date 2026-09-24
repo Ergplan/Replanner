@@ -42,7 +42,8 @@ solver within a second instead of letting it finish unwanted work.
 1. **Setup** (`/setup`). The sample project is read-only. Name a new project, and it
    starts as a copy of the sample. Edit the site, existing plant, tariff, open access,
    technologies and finance, and upload a year of load as CSV: a timestamp column and a
-   load column, 15-, 30- or 60-minute, in kW, MW or kWh per interval. A file with gaps
+   load column, 15-, 30- or 60-minute, in kW, MW or kWh per interval. Solar and wind
+   output, exchange prices and grid availability upload the same way. A file with gaps
    or duplicates is refused with the exact timestamps; nothing is filled in silently.
 2. **Save and find optimum** saves the inputs and opens the twin, which starts the
    solve. It takes a few minutes; the page shows elapsed time and fills in when the
@@ -50,9 +51,9 @@ solver within a second instead of letting it finish unwanted work.
 3. **Optimise & explore** (`/`). Play through the year, and use Manual scenario to fix
    capacities and see the premium over the optimum.
 
-Projects live in `runs/_projects/<id>/`: `inputs.json` and any uploaded series. Only
-load can be uploaded so far; solar, wind and exchange prices come from the synthetic
-sample. A user project
+Projects live in `runs/_projects/<id>/`: `inputs.json` and any uploaded series. Load,
+solar and wind output profiles, exchange prices and grid availability can each be
+uploaded; whatever is not comes from the synthetic sample. A user project
 assumes the grid is always available, because the sample's six-hour outage is a solver
 test case, not a fact about your site.
 

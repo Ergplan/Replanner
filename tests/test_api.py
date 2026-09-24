@@ -99,3 +99,23 @@ def test_the_current_fingerprint_follows_an_upload(client):
                 data={"unit": "kW"})
     after = client.get("/project", params={"project_id": pid}).json()["input_fingerprint"]
     assert before and after and before != after
+
+
+def test_any_series_can_be_replaced_and_reverted(client):
+    pid = client.post("/projects", json={"name": "x"}).json()["project_id"]
+    before = client.get("/project", params={"project_id": pid}).json()["input_fingerprint"]
+    t = pd.date_range("2026-01-01", "2027-01-01", freq="60min", inclusive="left")
+    csv = pd.DataFrame({"time": t.strftime("%Y-%m-%d %H:%M"), "wind_pct": 31.0}).to_csv(
+        index=False).encode()
+    r = client.post(f"/projects/{pid}/series/wind_remote_cf", files={"file": ("w.csv", csv)},
+                    data={"unit": "%"})
+    assert r.status_code == 200 and r.json()["annual_cf"] == pytest.approx(0.31)
+    rows = {s["column"]: s for s in client.get(f"/projects/{pid}").json()["series"]}
+    assert rows["wind_remote_cf"]["source"] == "uploaded" and "%" in rows["wind_remote_cf"]["units"]
+    assert rows["solar_remote_cf"]["source"] == "sample"
+    assert client.get("/project", params={"project_id": pid}).json()["input_fingerprint"] != before
+    client.delete(f"/projects/{pid}/series/wind_remote_cf")
+    rows = {s["column"]: s for s in client.get(f"/projects/{pid}").json()["series"]}
+    assert rows["wind_remote_cf"]["source"] == "sample"
+    assert client.post(f"/projects/{pid}/series/nonsense", files={"file": ("w.csv", csv)}
+                       ).status_code == 404

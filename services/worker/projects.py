@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "packages" / "energy_core"))
 sys.path.insert(0, str(ROOT / "datasets" / "synthetic"))
 
-from energy_core.ingestion import build_index  # noqa: E402
+from energy_core.ingestion import SPECS, build_index, describe  # noqa: E402
 from energy_core.schemas.domain import ProjectInputs  # noqa: E402
 
 PROJECTS = ROOT / "runs" / "_projects"
@@ -33,14 +33,7 @@ SAMPLE_DIR = ROOT / "datasets" / "synthetic"
 SAMPLE_ID = "seed-industrial-mh"
 
 #: Series a project may supply, with what each one is.
-SERIES = {
-    "load_mw": "Site load",
-    "solar_onsite_cf": "Rooftop solar output per MWp",
-    "solar_remote_cf": "Open-access solar output per MW",
-    "wind_remote_cf": "Open-access wind output per MW",
-    "iex_buy_inr_per_kwh": "Exchange purchase price",
-    "grid_available": "Grid availability",
-}
+SERIES = {c: spec.label for c, spec in SPECS.items()}
 
 
 class ProjectNotFound(KeyError):
@@ -167,23 +160,15 @@ def series_status(pid: str, year: int) -> list[dict]:
     frame = load_frame(pid, year)
     out = []
     for col, label in SERIES.items():
-        v = frame[col].to_numpy(dtype=float) if col in frame.columns else None
         if col in up:
             source = "uploaded"
         elif col == "grid_available" and pid != SAMPLE_ID:
             source = "assumed: always available"
         else:
             source = "sample"
-        row = {"column": col, "label": label, "source": source}
-        if v is not None and v.size:
-            if col == "load_mw":
-                row |= {"annual_mwh": float(v.sum() * 0.25), "peak_mw": float(v.max())}
-            elif col.endswith("_cf"):
-                row |= {"annual_cf": float(v.mean())}
-            elif col == "grid_available":
-                row |= {"outage_hours": float((v < 1).sum() * 0.25)}
-            else:
-                row |= {"mean": float(np.nanmean(v))}
+        row = {"column": col, "label": label, "source": source, "units": list(SPECS[col].units)}
+        if col in frame.columns:
+            row |= describe(col, frame[col].to_numpy(dtype=float))
         out.append(row)
     return out
 
