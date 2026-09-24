@@ -142,3 +142,9 @@ def test_existing_plant_still_generates_when_its_option_is_disabled():
     roof = next(g for g in spec.generation if g.cap_key == "solar_onsite_mw")
     assert roof.existing_mw == pytest.approx(1.0)
     assert roof.max_mw == 0.0 and roof.min_mw == 0.0
+
+
+def test_a_tariff_with_uncovered_hours_is_reported_before_any_solve():
+    p = seeded_project(YEAR)
+    p.tariff.rules = [r for r in p.tariff.rules if r.rule_id != "normal"]
+    assert any(s.startswith("tariff:") and "uncovered" in s for s in _problems(p))

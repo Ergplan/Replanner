@@ -11,7 +11,9 @@ from __future__ import annotations
 import math
 from datetime import date
 
+from ..ingestion import build_index
 from ..schemas.domain import ProjectInputs
+from ..tariffs import TariffEngine
 
 #: The five capacity names the wizard, the sliders and the Mode B comparison all speak.
 CAP_KEYS = ("solar_onsite_mw", "solar_remote_mw", "wind_remote_mw",
@@ -88,6 +90,14 @@ def unsupported_input_problems(inputs: ProjectInputs, operating_year: int, *,
                    "solve one operating year")
     if operating_year not in years:
         out.append(f"operating year {operating_year} is not in project.operating_years {years}")
+    if operating_year in years:
+        # Every quarter-hour must resolve to a rate. A schedule with holes is caught here,
+        # where the setup page can show it, not halfway into building a model.
+        try:
+            TariffEngine(inputs.tariff, inputs.open_access, timezone=proj.timezone).resolve(
+                build_index(operating_year, proj.timezone))
+        except ValueError as exc:
+            out.append(f"tariff: {exc}")
     if inputs.expansion:
         ids = [p.phase_id for p in inputs.expansion]
         out.append(f"expansion phases {ids}: staged load growth is not supported")

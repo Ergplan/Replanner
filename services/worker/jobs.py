@@ -65,6 +65,17 @@ def load(job_id: str) -> Job | None:
     return Job(**json.loads(p.read_text()))
 
 
+def update(job_id: str, **fields) -> Job | None:
+    """Change named fields only, re-reading first, so a cancellation written by the API
+    in the meantime is not overwritten by a stale copy."""
+    j = load(job_id)
+    if j is None:
+        return None
+    for k, v in fields.items():
+        setattr(j, k, v)
+    return j.save()
+
+
 def all_jobs() -> list[Job]:
     JOBS.mkdir(parents=True, exist_ok=True)
     out = []

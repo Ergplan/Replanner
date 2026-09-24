@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import multiprocessing as mp
 import sys
 import time
 from pathlib import Path
@@ -10,29 +11,23 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "packages" / "energy_core"))
 sys.path.insert(0, str(ROOT / "datasets" / "synthetic"))
 
-import pandas as pd  # noqa: E402
-
 from energy_core import MODEL_VERSION  # noqa: E402
 from energy_core.optimization import build_spec, solve_year  # noqa: E402
 from energy_core.schemas.common import Mode  # noqa: E402
 from energy_core.validation import Tolerances, certify  # noqa: E402
 
 import jobs as J  # noqa: E402
-
-
-def _inputs(year: int):
-    from project import seeded_project
-    pq = ROOT / "datasets" / "synthetic" / f"industrial_{year}.parquet"
-    return seeded_project(year), pd.read_parquet(pq)
+import projects as P  # noqa: E402
 
 
 def execute(job: J.Job) -> None:
-    inputs, frame = _inputs(job.year)
+    inputs = P.load_inputs(job.project_id)
+    frame = P.load_frame(job.project_id, job.year, inputs.project.timezone)
     mode = Mode(job.mode)
     spec = build_spec(inputs, frame, job.year, mode=mode,
                       fixed_capacities=job.capacities, model_version=MODEL_VERSION)
     job.input_fingerprint = spec.fingerprint()
-    job.save()
+    J.update(job.job_id, input_fingerprint=job.input_fingerprint)
 
     art = solve_year(spec, time_limit_s=900.0)
     run_id = f"{job.mode}-{job.job_id}"
@@ -104,6 +99,39 @@ def execute(job: J.Job) -> None:
     job.save()
 
 
+def _child(job_id: str) -> None:
+    job = J.load(job_id)
+    try:
+        execute(job)
+    except Exception as exc:                          # reported on the job, not swallowed
+        J.update(job_id, status=J.FAILED, message=f"{type(exc).__name__}: {exc}",
+                 finished_at=time.time())
+
+
+def run_stoppable(job: J.Job, poll_s: float = 0.5) -> J.Job:
+    """Solve in a child process so a cancelled or superseded job actually stops.
+
+    HiGHS cannot be interrupted from Python once it is inside a solve, so the only
+    reliable stop is to end the process running it. Nothing is lost by doing so: a job
+    writes its artefacts before it is marked succeeded, so a stopped job has none.
+    """
+    p = mp.get_context("spawn").Process(target=_child, args=(job.job_id,), daemon=True)
+    p.start()
+    while p.is_alive():
+        p.join(poll_s)
+        cur = J.load(job.job_id)
+        if p.is_alive() and cur is not None and cur.status == J.CANCELLING:
+            p.terminate()
+            p.join()
+            return J.update(job.job_id, status=J.CANCELLED, message="stopped mid-solve",
+                            finished_at=time.time())
+    cur = J.load(job.job_id)
+    if cur.status not in J.TERMINAL:
+        cur = J.update(job.job_id, status=J.FAILED, finished_at=time.time(),
+                       message=f"solve process exited with code {p.exitcode}")
+    return cur
+
+
 def main(poll_s: float = 0.5) -> None:
     print(f"worker up; watching {J.JOBS}", flush=True)
     while True:
@@ -112,14 +140,8 @@ def main(poll_s: float = 0.5) -> None:
             time.sleep(poll_s)
             continue
         print(f"solving {job.job_id} ({job.mode})", flush=True)
-        try:
-            execute(job)
-            print(f"  -> {job.status} {job.run_id}", flush=True)
-        except Exception as exc:                      # a failed job must not kill the worker
-            job.status, job.message = J.FAILED, f"{type(exc).__name__}: {exc}"
-            job.finished_at = time.time()
-            job.save()
-            print(f"  -> failed: {exc}", flush=True)
+        done = run_stoppable(job)
+        print(f"  -> {done.status} {done.run_id or done.message}", flush=True)
 
 
 if __name__ == "__main__":
