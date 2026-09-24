@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solar cell gigafactory · energy transition demo · jouleWise</title>
+<meta name="description" content="An interactive, illustrative demo: a 5 GW TOPCon solar-cell gigafactory switches to rooftop solar, open-access solar, wind and storage, and its cost of power falls from INR 6.70 to 3.89 per kWh.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<!--
+  Solar-cell gigafactory demo — standalone, no build step, no framework.
+
+  Use it as its own page, or embed it on any site:
+    <iframe src="gigafactory.html" title="Solar cell gigafactory demo"
+            style="width:100%; height:1150px; border:0;" loading="lazy"></iframe>
+  Or paste the <style>, the <div class="jwd"> block and the <script> into a page: every
+  style is scoped under .jwd, so it will not touch the host site's CSS.
+
+  The figures are illustrative and fixed (see DEMO below); five seconds is not enough to
+  solve anything, and the page says so. Change the numbers in DEMO and BUILDINGS to suit.
+-->
+<style>
+.jwd { --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --display: 'Sora', system-ui, sans-serif; --body: 'Hanken Grotesk', system-ui, sans-serif;
+  background: #07090C; color: #C9D3DD; font-family: var(--body); min-height: 100vh;
+  -webkit-font-smoothing: antialiased; }
+.jwd *, .jwd *::before, .jwd *::after { box-sizing: border-box; }
+.jwd .shell { max-width: 1600px; margin: 0 auto; padding: 0 24px 40px; }
+.jwd .top { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; padding: 18px 0 14px;
+  border-bottom: 1px solid #16202A; }
+.jwd .brand { font-family: var(--display); font-size: 18px; color: #E8EDF2; }
+.jwd .brand b { color: #CEAC10; font-weight: 600; }
+.jwd .eyebrow { font-family: var(--mono); font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; color: #6A7785; }
+.jwd .title { margin: 22px 0 16px; }
+.jwd .title h1 { font-family: var(--display); font-size: 26px; margin: 0; color: #E8EDF2; letter-spacing: -0.01em; font-weight: 500; }
+.jwd .title p { margin: 6px 0 0; font-size: 13px; color: #8391A0; max-width: 720px; line-height: 1.55; }
+.jwd .layout { display: grid; grid-template-columns: 1fr 340px; gap: 18px; align-items: start; }
+@media (max-width: 1100px) { .jwd .layout { grid-template-columns: 1fr; } }
+.jwd .stage { background: #06080B; border: 1px solid #16202A; border-radius: 6px; overflow: hidden; }
+.jwd .stage svg { display: block; width: 100%; height: auto; }
+.jwd .panel { display: flex; flex-direction: column; gap: 14px; }
+.jwd .card { background: #0C1117; border: 1px solid #1A2430; border-radius: 6px; padding: 16px; }
+.jwd .card h3 { margin: 0 0 4px; font-size: 13px; color: #E8EDF2; font-weight: 500; display: flex; gap: 10px; align-items: baseline; font-family: var(--display); }
+.jwd .card h3 .n { font-family: var(--mono); color: #CEAC10; font-size: 11px; }
+.jwd .hint { font-size: 12px; color: #7C8A99; line-height: 1.5; margin: 0 0 10px; }
+.jwd .count { font-family: var(--mono); font-size: 12px; color: #C9D3DD; margin-bottom: 10px; }
+.jwd .row { display: flex; gap: 8px; }
+.jwd button { font: inherit; }
+.jwd .ghost { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+  padding: 7px 11px; border-radius: 4px; border: 1px solid #263241; background: transparent; color: #AEB9C5; cursor: pointer; }
+.jwd .ghost:hover:not(:disabled) { border-color: #CEAC10; color: #CEAC10; }
+.jwd .ghost:disabled { opacity: .4; cursor: not-allowed; }
+.jwd .toggle { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 11px 12px;
+  border-radius: 5px; border: 1px solid #1E2936; background: #0A0F14; color: #C9D3DD; cursor: pointer; margin-top: 8px; }
+.jwd .toggle:hover:not(:disabled) { border-color: #3A4656; }
+.jwd .toggle[aria-pressed="true"] { border-color: #CEAC10; background: #14130C; }
+.jwd .toggle:disabled { opacity: .5; cursor: not-allowed; }
+.jwd .sw { width: 32px; height: 18px; border-radius: 9px; background: #1E2936; position: relative; flex: 0 0 auto; transition: background .2s; }
+.jwd .sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
+  background: #6A7785; transition: transform .2s, background .2s; }
+.jwd .toggle[aria-pressed="true"] .sw { background: #5A4B08; }
+.jwd .toggle[aria-pressed="true"] .sw::after { transform: translateX(14px); background: #CEAC10; }
+.jwd .label { font-size: 13px; }
+.jwd .spec { font-family: var(--mono); font-size: 10.5px; color: #6A7785; display: block; margin-top: 2px; }
+.jwd .run { width: 100%; padding: 15px; border-radius: 6px; border: 0; cursor: pointer;
+  background: linear-gradient(135deg, #CEAC10, #A88A0B); color: #0B0D10; font-family: var(--mono);
+  font-size: 13px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; }
+.jwd .run:disabled { opacity: .45; cursor: not-allowed; }
+.jwd .progress { height: 4px; border-radius: 2px; background: #16202A; overflow: hidden; margin-top: 10px; }
+.jwd .progress > div { height: 100%; width: 0; background: #CEAC10; }
+.jwd .phase { font-family: var(--mono); font-size: 11px; color: #8391A0; margin-top: 8px; min-height: 16px; }
+.jwd .results { display: grid; grid-template-columns: 1.5fr repeat(4, 1fr); gap: 1px; margin-top: 18px;
+  background: #16202A; border: 1px solid #16202A; border-radius: 6px; overflow: hidden; }
+@media (max-width: 1100px) { .jwd .results { grid-template-columns: 1fr 1fr; } }
+.jwd .metric { background: #0C1117; padding: 16px 18px; }
+.jwd .metric .k { font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: #6A7785; }
+.jwd .metric .v { font-family: var(--mono); font-size: 24px; color: #E8EDF2; margin-top: 6px; }
+.jwd .metric .s { font-size: 11.5px; color: #7C8A99; margin-top: 3px; }
+.jwd .cost .v { font-size: 38px; color: #CEAC10; }
+.jwd .cost .v small { font-size: 15px; color: #8391A0; }
+.jwd .cost .from { font-family: var(--mono); font-size: 13px; color: #6A7785; margin-top: 4px; }
+.jwd .cost .from s { color: #8391A0; }
+.jwd .bar { height: 6px; border-radius: 3px; background: #1E2936; margin-top: 10px; overflow: hidden; }
+.jwd .bar > div { height: 100%; width: 100%; background: linear-gradient(90deg, #4FB286, #CEAC10); }
+.jwd .foot { font-size: 11px; color: #56626F; margin-top: 14px; line-height: 1.5; }
+.jwd [data-b] { cursor: pointer; outline: none; }
+.jwd.locked [data-b] { cursor: default; }
+/* Flow dashes and rotors are CSS animations whose phase is carried across re-renders
+   through a negative delay, so the picture never jumps while the run is drawing. */
+@keyframes jwd-dash { from { stroke-dashoffset: 18; } to { stroke-dashoffset: 0; } }
+@keyframes jwd-spin { to { transform: rotate(360deg); } }
+.jwd .dash { animation: jwd-dash .9s linear infinite; }
+.jwd .rotor { animation: jwd-spin 2.4s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .jwd .dash, .jwd .rotor { animation: none; } }
+</style>
+</head>
+<body style="margin:0">
+<div class="jwd" id="jwd">
+  <div class="shell">
+    <header class="top">
+      <div class="brand"><b>joule</b>Wise</div>
+      <div class="eyebrow">ergOS · energy transition demo</div>
+    </header>
+    <div class="title">
+      <h1>5 GW TOPCon cell gigafactory</h1>
+      <p>780 GWh a year at a 105 MW peak, running round the clock through texturing, diffusion,
+        coating, printing and firing. Choose which roofs carry solar, add open-access solar, wind
+        and storage, and run.</p>
+    </div>
+    <div class="layout">
+      <div class="stage"><svg id="jwd-svg" viewBox="0 0 1500 860" role="group"
+           aria-label="Solar cell gigafactory campus"></svg></div>
+      <aside class="panel">
+        <section class="card">
+          <h3><span class="n">01</span>Rooftop solar</h3>
+          <p class="hint">Click a building on the campus to put solar on its roof.</p>
+          <div class="count" id="jwd-count"></div>
+          <div class="row">
+            <button class="ghost" id="jwd-all">All roofs</button>
+            <button class="ghost" id="jwd-clear">Clear</button>
+          </div>
+        </section>
+        <section class="card">
+          <h3><span class="n">02</span>Offsite supply &amp; storage</h3>
+          <button class="toggle" data-lever="oaSolar" aria-pressed="false"><span class="sw"></span>
+            <span><span class="label">Open-access solar</span><span class="spec">120 MW · wheeled from a remote park</span></span></button>
+          <button class="toggle" data-lever="wind" aria-pressed="false"><span class="sw"></span>
+            <span><span class="label">Open-access wind</span><span class="spec">90 MW · evening and night output</span></span></button>
+          <button class="toggle" data-lever="bess" aria-pressed="false"><span class="sw"></span>
+            <span><span class="label">Battery storage</span><span class="spec">60 MW / 240 MWh · shifts and shaves peaks</span></span></button>
+        </section>
+        <section class="card">
+          <button class="run" id="jwd-run" disabled>Run</button>
+          <div class="progress"><div id="jwd-progress"></div></div>
+          <div class="phase" id="jwd-phase">Select at least one option to run.</div>
+          <button class="ghost" id="jwd-reset" style="margin-top:10px">Reset</button>
+        </section>
+      </aside>
+    </div>
+    <div class="results" aria-live="polite">
+      <div class="metric cost"><div class="k">Cost of power</div>
+        <div class="v"><span id="jwd-cost">₹6.70</span><small> /kWh</small></div>
+        <div class="from">DISCOM today <s>₹6.70</s></div>
+        <div class="bar"><div id="jwd-bar"></div></div></div>
+      <div class="metric"><div class="k">Saving</div><div class="v" id="jwd-saving">0%</div><div class="s">on every unit</div></div>
+      <div class="metric"><div class="k">Annual saving</div><div class="v" id="jwd-annual">₹0 Cr</div><div class="s">on 780 GWh a year</div></div>
+      <div class="metric"><div class="k">Renewable share</div><div class="v" id="jwd-re">0%</div><div class="s">of annual energy</div></div>
+      <div class="metric"><div class="k">CO₂ avoided</div><div class="v" id="jwd-co2">0 kt</div><div class="s">a year, at the CEA grid factor</div></div>
+    </div>
+    <p class="foot">Illustrative demo for discussion. The figures are indicative for a site of this
+      kind and are not a solved result. A site's own numbers come from its metered load, tariff
+      order and quotes, through a certified optimisation of that site.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---- the numbers: illustrative, and said so on screen ------------------------------
+  var DEMO = { baseline: 6.70, target: 3.89, annualGwh: 780, gridTPerMwh: 0.716,
+               oaSolarMw: 120, windMw: 90, bessMw: 60, bessMwh: 240, runMs: 5000 };
+
+  // A TOPCon/PERC cell fab: six production halls in wafer order, then the support plant.
+  var BUILDINGS = [
+    { id: 'inbound', step: 1, name: 'Wafer inbound', role: 'Incoming inspection · wafer store', x: 9.0, y: 2, w: 2.4, d: 6, h: 2.2, mwp: 1.5 },
+    { id: 'texture', step: 2, name: 'Texturing', role: 'Wet benches: saw-damage etch, texture, clean', x: 11.4, y: 2, w: 3.0, d: 6, h: 2.6, mwp: 1.9 },
+    { id: 'diffusion', step: 3, name: 'Diffusion', role: 'POCl₃ / BCl₃ tube furnaces · LPCVD poly-Si', x: 14.4, y: 2, w: 3.0, d: 6, h: 3.0, mwp: 1.6, plant: 'stacks', clear: { x: 0, y: 0, w: 3.0, d: 1.1 } },
+    { id: 'coating', step: 4, name: 'ALD · PECVD', role: 'AlOₓ passivation · SiNₓ anti-reflection coating', x: 17.4, y: 2, w: 3.0, d: 6, h: 2.8, mwp: 1.6, plant: 'mau', clear: { x: 0, y: 0, w: 3.0, d: 1.1 } },
+    { id: 'print', step: 5, name: 'Laser · print', role: 'Laser contact opening · screen-print metallisation', x: 20.4, y: 2, w: 2.8, d: 6, h: 2.6, mwp: 1.8 },
+    { id: 'firing', step: 6, name: 'Firing · test', role: 'Co-firing · LID regeneration · IV test & sort', x: 23.2, y: 2, w: 2.6, d: 6, h: 2.6, mwp: 1.4, plant: 'stacks', clear: { x: 0, y: 0, w: 2.6, d: 1.1 } },
+    { id: 'chem', name: 'Chemical store', role: 'HF · KOH · HNO₃ storage and distribution', x: 11.2, y: 10.0, w: 3.0, d: 2.6, h: 2.0, mwp: 0.8 },
+    { id: 'upw', name: 'UPW plant', role: 'Ultrapure water for the wet benches', x: 17.6, y: 10.0, w: 3.0, d: 3.0, h: 2.6, mwp: 0.9 },
+    { id: 'chillers', name: 'Chillers · CDA', role: 'Process cooling · compressed dry air', x: 22.6, y: 10.0, w: 3.0, d: 3.2, h: 2.4, mwp: 0.5, plant: 'fans', clear: { x: 0, y: 0, w: 3.0, d: 1.9 } },
+    { id: 'dispatch', name: 'Cell dispatch', role: 'Finished-cell packing and outbound store', x: 14.6, y: 16.0, w: 5.0, d: 3.6, h: 2.2, mwp: 1.9 },
+    { id: 'admin', name: 'Admin · R&D', role: 'Offices · pilot line · reliability lab', x: 21.8, y: 16.0, w: 3.2, d: 3.0, h: 3.2, mwp: 0.9 }
+  ];
+  var ROOF_TOTAL = BUILDINGS.reduce(function (s, b) { return s + b.mwp; }, 0);
+
+  function result(sel) {
+    var roof = BUILDINGS.reduce(function (s, b) { return s + (sel.roofs[b.id] ? b.mwp : 0); }, 0);
+    var rf = roof / ROOF_TOTAL, paired = sel.oaSolar || sel.wind;
+    // Shares of the full saving; they sum to 1 with every lever on.
+    var saving = 0.08 * rf + (sel.oaSolar ? 0.42 : 0) + (sel.wind ? 0.32 : 0) + (sel.bess ? (paired ? 0.18 : 0.05) : 0);
+    var re = 0.03 * rf + (sel.oaSolar ? 0.38 : 0) + (sel.wind ? 0.27 : 0) + (sel.bess && paired ? 0.10 : 0);
+    var cost = DEMO.baseline - (DEMO.baseline - DEMO.target) * saving;
+    return { cost: cost, re: re, roof: roof,
+             annualCr: (DEMO.baseline - cost) * DEMO.annualGwh * 1e6 / 1e7,
+             co2t: re * DEMO.annualGwh * 1000 * DEMO.gridTPerMwh };
+  }
+
+  // ---- the 2:1 isometric projection ----------------------------------------------------
+  var U = 30, V = 15, H = 24, OX = 690, OY = 96, GW = 26, GD = 22;
+  function P(x, y, z) { z = z || 0; return [OX + (x - y) * U, OY + (x + y) * V - z * H]; }
+  function pt(p) { return p[0].toFixed(1) + ',' + p[1].toFixed(1); }
+  function poly(ps) { return 'M' + ps.map(pt).join('L') + 'Z'; }
+  function box(x, y, w, d, h, z) {
+    z = z || 0;
+    return { top: poly([P(x, y, z + h), P(x + w, y, z + h), P(x + w, y + d, z + h), P(x, y + d, z + h)]),
+             left: poly([P(x, y + d, z + h), P(x + w, y + d, z + h), P(x + w, y + d, z), P(x, y + d, z)]),
+             right: poly([P(x + w, y, z + h), P(x + w, y + d, z + h), P(x + w, y + d, z), P(x + w, y, z)]) };
+  }
+  function tile(x, y, w, d, z) { return poly([P(x, y, z), P(x + w, y, z), P(x + w, y + d, z), P(x, y + d, z)]); }
+  function grid(x, y, w, d, z, cols, rows, gap) {
+    var out = [], cw = w / cols, ch = d / rows;
+    for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++)
+      out.push({ c: c, r: r, d: tile(x + c * cw + gap / 2, y + r * ch + gap / 2, cw - gap, ch - gap, z) });
+    return out;
+  }
+  function route(pts, z) { return 'M' + pts.map(function (q) { return pt(P(q[0], q[1], z)); }).join('L'); }
+  function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+
+  var C = { ground: '#0D131A', grid: '#17202A', road: '#111922', top: '#1E2732', topHover: '#27323F',
+    left: '#151C25', right: '#10161E', edge: '#2B3644', gold: '#CEAC10', wind: '#A9C3D6',
+    text: '#C9D3DD', faint: '#6A7785', green: '#4FB286', blue: '#5B8DC4', plant: '#2A3440',
+    tank: '#3A4757', water: '#15324A', bg0: '#06080B', bg1: '#0C1117' };
+
+  // Roof panel grids, leaving roof plant clear.
+  var ROOFS = {};
+  BUILDINGS.forEach(function (b) {
+    var m = 0.22, cols = Math.max(3, Math.round((b.w - 2 * m) * 1.5)), rows = Math.max(2, Math.round((b.d - 2 * m) * 1.5));
+    var g = grid(b.x + m, b.y + m, b.w - 2 * m, b.d - 2 * m, b.h, cols, rows, 0.09);
+    if (b.clear) {
+      var k = b.clear, cw = (b.w - 2 * m) / cols, ch = (b.d - 2 * m) / rows;
+      g = g.filter(function (t) {
+        var cx = m + (t.c + 0.5) * cw, cy = m + (t.r + 0.5) * ch;
+        return !(cx > k.x && cx < k.x + k.w && cy > k.y && cy < k.y + k.d);
+      });
+    }
+    ROOFS[b.id] = g;
+  });
+  var PARK = grid(0.6, 0.8, 6.6, 7.4, 0.04, 11, 12, 0.12);
+  var TURBINES = [[1.6, 10.2], [4.4, 10.6], [2.2, 12.6], [5.0, 13.0], [1.8, 15.0], [4.6, 15.4]];
+  var CONTAINERS = []; for (var i = 0; i < 10; i++) CONTAINERS.push({ x: 9.1 + (i % 5) * 0.66, y: 16.8 + Math.floor(i / 5) * 2.1 });
+  var SLICES = { roofs: [0.02, 0.42], park: [0.14, 0.4], wind: [0.34, 0.36], bess: [0.55, 0.3] };
+  function slice(p, s) { return clamp01((p - s[0]) / s[1]); }
+
+  function faces(f, fillL, fillR, fillT, stroke, sw, extra) {
+    return '<path d="' + f.left + '" fill="' + fillL + '"' + (stroke ? ' stroke="' + stroke + '" stroke-width="' + (sw || 0.5) + '"' : '') + '/>' +
+      '<path d="' + f.right + '" fill="' + fillR + '"' + (stroke ? ' stroke="' + stroke + '" stroke-width="' + (sw || 0.5) + '"' : '') + '/>' +
+      '<path d="' + f.top + '" fill="' + fillT + '"' + (extra || (stroke ? ' stroke="' + stroke + '" stroke-width="' + (sw || 0.5) + '"' : '')) + '/>';
+  }
+  function cylinder(x, y, r, h, z, fill, top) {
+    var c = P(x, y, z || 0), rx = r * U * Math.SQRT2, ry = r * V * Math.SQRT2, hh = h * H, cx = c[0], cy = c[1];
+    return '<path d="M' + (cx - rx) + ',' + cy + ' L' + (cx - rx) + ',' + (cy - hh) + ' A' + rx + ',' + ry + ' 0 0 0 ' + (cx + rx) + ',' + (cy - hh) +
+      ' L' + (cx + rx) + ',' + cy + ' A' + rx + ',' + ry + ' 0 0 1 ' + (cx - rx) + ',' + cy + ' Z" fill="' + (fill || C.tank) + '"/>' +
+      '<path d="M' + cx + ',' + (cy + ry) + ' L' + cx + ',' + (cy - hh + ry) + ' L' + (cx + rx) + ',' + (cy - hh) + ' L' + (cx + rx) + ',' + cy +
+      ' A' + rx + ',' + ry + ' 0 0 1 ' + cx + ',' + (cy + ry) + ' Z" fill="#000" opacity="0.18"/>' +
+      '<ellipse cx="' + cx + '" cy="' + (cy - hh) + '" rx="' + rx + '" ry="' + ry + '" fill="' + (top || '#56657A') + '" stroke="' + C.edge + '" stroke-width="0.5"/>';
+  }
+  function roofPlant(b) {
+    var k = b.clear, s = '';
+    if (!k || !b.plant) return '';
+    if (b.plant === 'fans') {
+      for (var i = 0; i < 3; i++) {
+        var cx = b.x + k.x + (i + 0.5) * (k.w / 3), cy = b.y + k.y + k.d / 2, e = P(cx, cy, b.h + 0.5);
+        s += faces(box(cx - 0.42, cy - 0.42, 0.84, 0.84, 0.5, b.h), '#1B232D', '#161D26', C.plant, C.edge) +
+          '<ellipse cx="' + e[0] + '" cy="' + e[1] + '" rx="' + (0.34 * U * Math.SQRT2) + '" ry="' + (0.34 * V * Math.SQRT2) + '" fill="#0B1117"/>';
+      }
+      return s;
+    }
+    if (b.plant === 'mau') {
+      for (var j = 0; j < 2; j++) s += faces(box(b.x + 0.3 + j * 1.4, b.y + 0.15, 1.1, 0.8, 0.55, b.h), '#1B232D', '#161D26', C.plant, C.edge);
+      return s;
+    }
+    [0.3, 1.25, 2.2].forEach(function (dx) { if (dx + 0.35 < b.w) s += cylinder(b.x + dx + 0.18, b.y + 0.5, 0.14, 1.5, b.h, '#2A3440', '#4A5767'); });
+    return s;
+  }
+  // Negative delays keep every animation's phase continuous across re-renders.
+  function phase(dur) { return -((performance.now() / 1000) % dur).toFixed(3) + 's'; }
+  function flow(pts, width, color, on) {
+    if (on <= 0 || width <= 0) return '';
+    var d = route(pts, 0.06);
+    return '<g opacity="' + on + '"><path d="' + d + '" fill="none" stroke="' + color + '" stroke-opacity="0.18" stroke-width="' + (width + 5) + '" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path class="dash" style="animation-delay:' + phase(0.9) + '" d="' + d + '" fill="none" stroke="' + color + '" stroke-width="' + width + '" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="10 8"/></g>';
+  }
+  function text(x, y, s, size, fill, anchor, extra) {
+    return '<text x="' + x + '" y="' + y + '" text-anchor="' + (anchor || 'middle') + '" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="' + size + '" fill="' + fill + '"' + (extra || '') + '>' + esc(s) + '</text>';
+  }
+
+  // ---- state ----------------------------------------------------------------------------
+  var state = { sel: { roofs: {}, oaSolar: false, wind: false, bess: false }, progress: null, hover: null };
+  var svg = document.getElementById('jwd-svg');
+  var refocusing = false;
+
+  var DEFS = '<defs><linearGradient id="jwdSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + C.bg1 + '"/><stop offset="1" stop-color="' + C.bg0 + '"/></linearGradient>' +
+    '<linearGradient id="jwdPanel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3B82C4"/><stop offset="1" stop-color="#16426F"/></linearGradient>' +
+    '<radialGradient id="jwdGlow" cx="0.5" cy="0.45" r="0.6"><stop offset="0" stop-color="#12202E" stop-opacity="0.9"/><stop offset="1" stop-color="' + C.bg0 + '" stop-opacity="0"/></radialGradient>' +
+    '<marker id="jwdArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="' + C.gold + '"/></marker></defs>';
+
+  var groundLines = '';
+  for (var gx = 1; gx < GW; gx += 2) groundLines += 'M' + pt(P(gx, 0)) + 'L' + pt(P(gx, GD));
+  for (var gy = 1; gy < GD; gy += 2) groundLines += 'M' + pt(P(0, gy)) + 'L' + pt(P(GW, gy));
+  var BACK = '<rect width="1500" height="860" fill="url(#jwdSky)"/><rect width="1500" height="860" fill="url(#jwdGlow)"/>' +
+    '<path d="' + poly([P(0, 0), P(GW, 0), P(GW, GD), P(0, GD)]) + '" fill="' + C.ground + '" stroke="' + C.grid + '"/>' +
+    '<path d="' + groundLines + '" fill="none" stroke="' + C.grid + '" stroke-width="0.6" opacity="0.7"/>' +
+    [[8.2, 1.0, 0.6, 20.4], [8.8, 8.4, 17.2, 1.1], [8.8, 14.5, 17.2, 0.9]].map(function (r) {
+      return '<path d="' + tile(r[0], r[1], r[2], r[3], 0.01) + '" fill="' + C.road + '"/>'; }).join('') +
+    '<path d="' + tile(0, 0, 7.6, 16.6, 0.01) + '" fill="#0B1117" stroke="#3A4656" stroke-dasharray="7 6"/>' +
+    text(P(0.3, -0.6)[0], P(0.3, -0.6)[1], 'OFFSITE · OPEN ACCESS', 12, C.faint, 'start', ' letter-spacing="1.6"');
+
+  function render() {
+    var sel = state.sel, ran = state.progress !== null, p = state.progress || 0;
+    var locked = ran && p < 1;
+    var order = BUILDINGS.filter(function (b) { return sel.roofs[b.id]; }).map(function (b) { return b.id; });
+    function roofFrac(id) {
+      if (!ran || !sel.roofs[id]) return 0;
+      return clamp01((p - SLICES.roofs[0] - order.indexOf(id) * 0.025) / SLICES.roofs[1]);
+    }
+    var parkF = ran && sel.oaSolar ? slice(p, SLICES.park) : 0;
+    var windF = ran && sel.wind ? slice(p, SLICES.wind) : 0;
+    var bessF = ran && sel.bess ? slice(p, SLICES.bess) : 0;
+    var reOn = Math.max.apply(null, [parkF, windF].concat(BUILDINGS.map(function (b) { return roofFrac(b.id); })));
+    var items = [];
+    function stand(depth, s) { items.push({ depth: depth, s: s }); }
+
+    BUILDINGS.forEach(function (b) {
+      var f = box(b.x, b.y, b.w, b.d, b.h), on = !!sel.roofs[b.id], fr = roofFrac(b.id);
+      var panels = ROOFS[b.id], n = Math.floor(fr * panels.length), hov = state.hover === b.id && !locked;
+      var s = '<g data-b="' + b.id + '" role="button" tabindex="' + (locked ? -1 : 0) + '" aria-pressed="' + on + '" aria-label="' +
+        esc(b.name + ', ' + b.role + ': rooftop solar ' + (on ? 'on' : 'off') + ', ' + b.mwp + ' MWp') + '">' +
+        '<path d="' + f.left + '" fill="' + C.left + '" stroke="' + C.edge + '" stroke-width="0.6"/>' +
+        '<path d="' + f.right + '" fill="' + C.right + '" stroke="' + C.edge + '" stroke-width="0.6"/>' +
+        '<path d="' + f.top + '" fill="' + (hov ? C.topHover : C.top) + '" stroke="' + (on ? C.gold : C.edge) + '" stroke-width="' + (on ? 1.6 : 0.8) + '"' + (on && fr < 1 ? ' stroke-dasharray="6 4"' : '') + '/>' +
+        '<path d="' + poly([P(b.x + 0.25, b.y + b.d, b.h * 0.72), P(b.x + b.w - 0.25, b.y + b.d, b.h * 0.72), P(b.x + b.w - 0.25, b.y + b.d, b.h * 0.58), P(b.x + 0.25, b.y + b.d, b.h * 0.58)]) + '" fill="#22303D" opacity="0.85"/>' +
+        (on && fr < 1 ? '<path d="' + tile(b.x + 0.22, b.y + 0.22, b.w - 0.44, b.d - 0.44, b.h) + '" fill="' + C.gold + '" opacity="0.07"/>' : '');
+      for (var i = 0; i < n; i++) s += '<path d="' + panels[i].d + '" fill="url(#jwdPanel)" stroke="#0A1A2B" stroke-width="0.35"/>';
+      s += roofPlant(b) + '</g>';
+      stand(b.x + b.w / 2 + b.y + b.d / 2, s);
+    });
+
+    // support plant: bulk gases and silane bunker, scrubbers, wastewater, substation, line
+    [[14.9, 10.5, 0.32, 2.2], [15.8, 10.5, 0.32, 2.2], [16.7, 10.5, 0.32, 2.2], [14.9, 11.7, 0.26, 1.6], [15.8, 11.7, 0.26, 1.6]]
+      .forEach(function (t) { stand(t[0] + t[1], cylinder(t[0], t[1], t[2], t[3])); });
+    stand(29.5, faces(box(16.4, 12.3, 0.9, 0.8, 0.9), '#2A2320', '#221C19', '#4A3A30', null, null, ' stroke="#6B4F3A" stroke-width="0.6"'));
+    [[21.1, 10.5], [21.1, 11.5], [21.1, 12.5]].forEach(function (t) { stand(t[0] + t[1], cylinder(t[0], t[1], 0.3, 3.6, 0, '#2F3A47', '#5A6A7E')); });
+    [[20.6, 16.9], [20.6, 18.6]].forEach(function (t) {
+      var c = P(t[0], t[1], 0.35);
+      stand(t[0] + t[1], cylinder(t[0], t[1], 0.62, 0.35, 0, '#223040', C.water) +
+        '<ellipse cx="' + c[0] + '" cy="' + c[1] + '" rx="' + (0.42 * U * Math.SQRT2) + '" ry="' + (0.42 * V * Math.SQRT2) + '" fill="none" stroke="#2B5775" stroke-width="0.8"/>');
+    });
+    stand(29.1, faces(box(12.2, 15.6, 1.4, 1.2, 1.0), '#1C2530', '#161D26', '#34404E', null, null, ' stroke="' + C.gold + '" stroke-width="0.8"'));
+    [[25.6, 13.6], [26.0, 15.4]].forEach(function (t) {
+      var q = P(t[0], t[1]);
+      stand(t[0] + t[1], '<g transform="translate(' + q[0] + ',' + q[1] + ')"><path d="M0,0 L-10,-72 M0,0 L10,-72 M-10,-72 L10,-72 M-7,-50 L7,-50 M-4,-28 L4,-28 M-17,-64 L17,-64" stroke="#56657A" stroke-width="1.8" fill="none"/></g>');
+    });
+
+    TURBINES.forEach(function (t, i) {
+      var each = clamp01(windF * TURBINES.length - i), q = P(t[0], t[1]);
+      if (each <= 0) {
+        if (sel.wind && !ran) stand(t[0] + t[1], '<ellipse cx="' + q[0] + '" cy="' + q[1] + '" rx="9" ry="4.5" fill="none" stroke="' + C.gold + '" opacity="0.55" stroke-dasharray="3 3"/>');
+        return;
+      }
+      var h = 96 * each, dur = 2.4 + (i % 3) * 0.3;
+      var s = '<g transform="translate(' + q[0] + ',' + q[1] + ')" opacity="' + (0.35 + 0.65 * each) + '"><ellipse rx="7" ry="3.5" fill="#1B232D"/>' +
+        '<path d="M-2.2,0 L-1.1,' + (-h) + ' L1.1,' + (-h) + ' L2.2,0 Z" fill="' + C.wind + '"/>';
+      if (each >= 1) {
+        s += '<g transform="translate(0,' + (-h) + ')"><g transform="rotate(' + (i * 40) + ')"><g class="rotor" style="animation-duration:' + dur + 's;animation-delay:' + phase(dur) + '">' +
+          [0, 120, 240].map(function (a) { return '<path d="M0,0 L-1.6,-4 L0,-30 L1.6,-4 Z" fill="' + C.wind + '" transform="rotate(' + a + ')"/>'; }).join('') +
+          '</g></g><circle r="3" fill="#E7EEF3"/></g>';
+      }
+      stand(t[0] + t[1], s + '</g>');
+    });
+
+    CONTAINERS.forEach(function (c, i) {
+      var each = clamp01(bessF * CONTAINERS.length - i);
+      if (each <= 0) return;
+      stand(c.x + c.y + 1, '<g opacity="' + each + '">' + faces(box(c.x, c.y, 0.56, 1.75, 0.9, (1 - each) * 2.4), '#1C2530', '#161D26', p >= 1 ? '#2F5D43' : C.plant, C.edge) + '</g>');
+    });
+    items.sort(function (a, b) { return a.depth - b.depth; });
+
+    var s = BACK;
+    if (sel.oaSolar && !ran) s += '<path d="' + tile(0.6, 0.8, 6.6, 7.4, 0.02) + '" fill="' + C.gold + '" fill-opacity="0.05" stroke="' + C.gold + '" stroke-width="1.2" stroke-dasharray="6 5"/>';
+    var nPark = Math.floor(parkF * PARK.length);
+    for (var k = 0; k < nPark; k++) s += '<path d="' + PARK[k].d + '" fill="url(#jwdPanel)" stroke="#0A1A2B" stroke-width="0.35"/>';
+    s += '<path d="' + tile(8.95, 16.6, 3.55, 4.3, 0.015) + '" fill="#0F161E" stroke="' + (sel.bess && !ran ? C.gold : '#2B3644') + '" stroke-width="' + (sel.bess && !ran ? 1.2 : 0.8) + '" stroke-dasharray="6 5"/>';
+    var gridW = Math.max(1.2, 9 * (1 - 0.75 * reOn * (sel.oaSolar || sel.wind ? 1 : 0.2)));
+    s += flow([[25.9, 14.7], [14.4, 14.95], [13.6, 15.7]], gridW, C.blue, 1);
+    s += flow([[7.2, 4.4], [7.95, 4.4], [7.95, 15.9], [12.2, 15.9]], 6.5, C.gold, parkF >= 1 ? 1 : parkF * 0.6);
+    s += flow([[6.0, 12.8], [7.75, 12.8], [7.75, 16.25], [12.2, 16.25]], 5, C.wind, windF >= 1 ? 1 : windF * 0.6);
+    s += flow([[11.1, 16.6], [12.4, 16.5]], 4.5, C.green, bessF >= 1 ? 1 : 0);
+    s += items.map(function (it) { return it.s; }).join('');
+
+    // wafer flow along the production spine
+    s += '<path d="' + route([[9.4, 8.05], [25.5, 8.05]], 1.25) + '" fill="none" stroke="' + C.gold + '" stroke-width="1.6" stroke-dasharray="2 5" marker-end="url(#jwdArrow)" opacity="0.85" pointer-events="none"/>';
+    BUILDINGS.forEach(function (b) {
+      if (!b.step) return;
+      var q = P(b.x + b.w / 2, b.y + b.d, 1.25);
+      s += '<g transform="translate(' + q[0] + ',' + q[1] + ')" pointer-events="none"><circle r="9" fill="#0A0F14" stroke="' + C.gold + '"/>' + text(0, 4, b.step, 10.5, C.gold) + '</g>';
+    });
+    var wf = P(25.9, 8.1, 1.25);
+    s += text(wf[0] + 16, wf[1] + 4, 'WAFER FLOW', 11, C.gold, 'start', ' letter-spacing="1.4" opacity="0.85" pointer-events="none"');
+
+    // roof labels on top, so nothing hides them
+    BUILDINGS.forEach(function (b) {
+      var q = P(b.x + b.w / 2, b.y + b.d / 2 + (b.clear && b.clear.y === 0 ? b.clear.d / 2 : 0), b.h);
+      var on = !!sel.roofs[b.id], hov = state.hover === b.id, w = Math.max(b.name.length * 7 + 18, hov ? 150 : 0);
+      s += '<g transform="translate(' + q[0] + ',' + q[1] + ')" pointer-events="none"><rect x="' + (-w / 2) + '" y="-13" width="' + w + '" height="' + (hov ? 40 : 24) + '" rx="3" fill="#0A0F14" fill-opacity="0.85" stroke="' + (on ? C.gold : '#2B3644') + '" stroke-width="0.8"/>' +
+        text(0, 3, b.name, 11, on ? C.gold : C.text) +
+        (hov ? text(0, 19, on ? '☀ ' + b.mwp + ' MWp · click to remove' : b.mwp + ' MWp roof · click to add', 9.5, C.faint) : '') + '</g>';
+    });
+    [[P(16.0, 10.5, 2.6), 'BULK GASES'], [P(21.4, 13.4), 'SCRUBBERS'], [P(19.4, 20.4), 'FLUORIDE WWT'], [P(12.9, 15.6, 1.3), 'MAIN SUBSTATION']]
+      .forEach(function (t) { s += text(t[0][0], t[0][1] - 8, t[1], 9.5, C.faint, 'middle', ' letter-spacing="1" pointer-events="none"'); });
+    function caption(at, title, value, on, done, anchor) {
+      return '<g transform="translate(' + at[0] + ',' + at[1] + ')" opacity="' + (on ? 1 : 0.4) + '" pointer-events="none">' +
+        text(0, 0, title.toUpperCase(), 11, C.faint, anchor, ' letter-spacing="1.4"') + text(0, 18, on ? value : 'not selected', 14, on && done ? C.gold : C.text, anchor) + '</g>';
+    }
+    s += caption(P(-0.4, 4.4), 'Open-access solar', DEMO.oaSolarMw + ' MW', sel.oaSolar, parkF >= 1, 'end');
+    s += caption(P(-0.4, 12.8), 'Open-access wind', DEMO.windMw + ' MW', sel.wind, windF >= 1, 'end');
+    s += caption(P(10.7, 21.8), 'Battery storage', DEMO.bessMw + ' MW · ' + DEMO.bessMwh + ' MWh', sel.bess, bessF >= 1, 'middle');
+    s += caption(P(26.4, 17.2), 'DISCOM 220 kV', 'grid supply', true, true, 'middle');
+    var hb = BUILDINGS.filter(function (b) { return b.id === state.hover; })[0];
+    if (hb && !locked) s += text(750, 842, (hb.step ? 'Step ' + hb.step + ' · ' : '') + hb.name + ' — ' + hb.role, 12.5, C.text);
+
+    // Re-drawing replaces every element, so keyboard focus is carried across by id.
+    var a = document.activeElement, keep = a && svg.contains(a) && a.getAttribute ? a.getAttribute('data-b') : null;
+    svg.innerHTML = DEFS + s;
+    if (keep) {
+      var again = svg.querySelector('[data-b="' + keep + '"]');
+      // Restoring focus must not move the hover, or the picture re-draws under a pending
+      // click and the click lands on nothing.
+      refocusing = true;
+      if (again) again.focus({ preventScroll: true });
+      refocusing = false;
+    }
+    document.getElementById('jwd').classList.toggle('locked', locked);
+    renderPanel(locked);
+  }
+
+  // ---- the control panel and the results -------------------------------------------------
+  var $ = function (id) { return document.getElementById(id); };
+  var PHASES = [[0, 'Placing rooftop arrays on the fab halls…'], [0.16, 'Commissioning the open-access solar park…'],
+    [0.36, 'Raising the wind turbines…'], [0.56, 'Installing battery storage…'],
+    [0.8, 'Optimising 35,040 quarter-hours of dispatch…'], [1, 'Done.']];
+  function ease(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+
+  function renderPanel(locked) {
+    var sel = state.sel, r = result(sel), p = state.progress;
+    var nRoofs = BUILDINGS.filter(function (b) { return sel.roofs[b.id]; }).length;
+    var anything = nRoofs > 0 || sel.oaSolar || sel.wind || sel.bess;
+    $('jwd-count').textContent = nRoofs + ' of ' + BUILDINGS.length + ' roofs · ' + r.roof.toFixed(1) + ' MWp';
+    $('jwd-all').disabled = locked; $('jwd-clear').disabled = locked || nRoofs === 0; $('jwd-reset').disabled = locked;
+    document.querySelectorAll('#jwd .toggle').forEach(function (t) {
+      t.setAttribute('aria-pressed', String(!!sel[t.getAttribute('data-lever')])); t.disabled = locked;
+    });
+    var run = $('jwd-run');
+    run.disabled = !anything || locked;
+    run.textContent = locked ? 'Running…' : p === 1 ? 'Run again' : 'Run';
+    $('jwd-progress').style.width = ((p || 0) * 100) + '%';
+    var ph = '';
+    if (p !== null) for (var i = PHASES.length - 1; i >= 0; i--) if (p >= PHASES[i][0]) { ph = PHASES[i][1]; break; }
+    $('jwd-phase').textContent = anything ? ph : 'Select at least one option to run.';
+    var shown = p === null ? 0 : ease(Math.min(1, Math.max(0, (p - 0.04) / 0.92)));
+    var cost = DEMO.baseline - (DEMO.baseline - r.cost) * shown;
+    $('jwd-cost').textContent = '₹' + cost.toFixed(2);
+    $('jwd-bar').style.width = (cost / DEMO.baseline * 100) + '%';
+    $('jwd-saving').textContent = ((DEMO.baseline - cost) / DEMO.baseline * 100).toFixed(0) + '%';
+    $('jwd-annual').textContent = '₹' + Math.round(r.annualCr * shown).toLocaleString('en-IN') + ' Cr';
+    $('jwd-re').textContent = Math.round(r.re * shown * 100) + '%';
+    $('jwd-co2').textContent = Math.round(r.co2t * shown / 1000).toLocaleString('en-IN') + ' kt';
+  }
+
+  // Any change to the selection makes a finished picture stale, so it goes back to plan.
+  function change(fn) {
+    if (state.progress !== null && state.progress < 1) return;
+    fn(state.sel); state.progress = null; render();
+  }
+  function toggleRoof(id) { change(function (s) { s.roofs[id] = !s.roofs[id]; }); }
+
+  svg.addEventListener('click', function (e) {
+    var g = e.target.closest('[data-b]'); if (g) toggleRoof(g.getAttribute('data-b'));
+  });
+  svg.addEventListener('keydown', function (e) {
+    var g = e.target.closest('[data-b]');
+    if (!g || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
+    toggleRoof(g.getAttribute('data-b'));
+  });
+  function setHover(id) { if (state.hover !== id) { state.hover = id; if (state.progress === null || state.progress >= 1) render(); } }
+  svg.addEventListener('mouseover', function (e) { var g = e.target.closest('[data-b]'); setHover(g ? g.getAttribute('data-b') : null); });
+  svg.addEventListener('mouseleave', function () { setHover(null); });
+  svg.addEventListener('focusin', function (e) {
+    if (refocusing) return;
+    var g = e.target.closest('[data-b]'); if (g) setHover(g.getAttribute('data-b'));
+  });
+
+  $('jwd-all').addEventListener('click', function () { change(function (s) { BUILDINGS.forEach(function (b) { s.roofs[b.id] = true; }); }); });
+  $('jwd-clear').addEventListener('click', function () { change(function (s) { s.roofs = {}; }); });
+  $('jwd-reset').addEventListener('click', function () { change(function (s) { s.roofs = {}; s.oaSolar = s.wind = s.bess = false; }); });
+  document.querySelectorAll('#jwd .toggle').forEach(function (t) {
+    t.addEventListener('click', function () { var k = t.getAttribute('data-lever'); change(function (s) { s[k] = !s[k]; }); });
+  });
+  $('jwd-run').addEventListener('click', function () {
+    var t0 = performance.now();
+    state.progress = 0; state.hover = null;
+    (function tick(now) {
+      state.progress = Math.min(1, (now - t0) / DEMO.runMs);
+      render();
+      if (state.progress < 1) requestAnimationFrame(tick);
+    })(t0);
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
