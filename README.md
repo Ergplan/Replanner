@@ -68,8 +68,10 @@ on screen. Near-zero flows are hidden rather than drawn faint.
 
 ## Honest limits
 
-- One operating year. Multi-year staging and degradation are schema'd and documented as
-  **unsupported**, and fail validation rather than being quietly approximated.
+- Sizing is optimised against one operating year. The lifetime evaluation runs the
+  chosen design through its study period with degradation, cell replacement and
+  escalation, but does not re-size across years. Multi-year optimisation and staged load
+  growth are **unsupported**, and fail validation rather than being quietly approximated.
 - Perfect foresight. A planning bound, not a claim about a real-time controller.
 - Everything shipped is illustrative — not metered load, not vendor quotations, not a
   statement of any statutory charge.
@@ -85,7 +87,9 @@ collision sweep, and the mistakes already paid for.
 Start the worker, API and web app (`make worker`, `make api`, `make web`) and open
 http://localhost:3210/setup. Create a project from the sample and enter your site,
 tariff and technology costs. Upload a year of load, then **Save and find optimum**.
-`docs/operations.md` walks through each step.
+Evaluate the result over its life for levelised cost, payback and IRR against staying on
+grid supply. `docs/operations.md` walks through each step. `/demo` is a five-second,
+illustrative client presentation of a solar-cell gigafactory.
 
 ## Quick start (command line)
 

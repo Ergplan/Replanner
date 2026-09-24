@@ -141,3 +141,19 @@ def test_a_run_downloads_as_csv(client, tmp_path):
     per_kwh = summary[(summary.section == "cost per kWh") & (summary.item == "total_annual_cost")]
     assert float(per_kwh.value.iloc[0]) == pytest.approx(12000.0 / 2000.0)  # 2 MW for an hour
     assert "banked" not in set(summary.item)
+
+
+def test_a_lifetime_is_only_of_a_certified_design(client, tmp_path):
+    for rid, status in (("good", "certified"), ("bad", "failed")):
+        (tmp_path / rid).mkdir()
+        (tmp_path / rid / "summary.json").write_text(
+            '{"run_id": "%s", "mode": "find_optimum", "validation_status": "%s", '
+            '"capacities": {"solar_onsite_mw": 7.0, "bess_power_mw": 10.0, '
+            '"bess_energy_mwh": 60.0, "existing_solar_onsite_mw": 1.0}}' % (rid, status))
+    r = client.post("/scenarios", json={"mode": "lifetime", "baseline_run_id": "bad"})
+    assert r.status_code == 400
+    a = client.post("/scenarios", json={"mode": "lifetime", "baseline_run_id": "good"}).json()
+    b = client.post("/scenarios", json={"mode": "lifetime", "baseline_run_id": "good"}).json()
+    assert a["job_id"] == b["job_id"]
+    job = client.get(f"/jobs/{a['job_id']}").json()
+    assert job["capacities"] == {"solar_onsite_mw": 7.0, "bess_power_mw": 10.0, "bess_energy_mwh": 60.0}

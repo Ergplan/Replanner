@@ -103,6 +103,26 @@ the cell life the energy annuity assumes. Cycling faster would wear the cells ou
 that annuity has paid for them. The validator recomputes it (`warranty_throughput`). Installed energy is kept apart from remaining usable energy, and
 no bilinear `capacity × endogenous SOH` product is formed.
 
+## Lifetime — `lifetime.py`
+
+For year `k = 1…N` of the study period, the design's year-1 problem is re-solved at fixed
+capacities with profiles `cf_{g,t} (1 − d_g)^{k−1}`, cell energy
+`Q (1 − φ)^{(k−1) mod L_Q}`, and every price, charge and O&M rate multiplied by
+`(1 + e)^{k−1}`. Its operating cost `O_k` is the certified ledger total less the capital
+annuity. Cash flows are
+
+```
+C_0 = Σ capex                       (purchase)
+C_k = O_k + Σ replacements at k     (an item of life L is re-bought at L, 2L, …)
+C_N −= Σ salvage                    (straight-line share of the last purchase unused at N)
+```
+
+NPV `= Σ_k C_k / (1 + r)^k`, and the levelised cost is NPV divided by
+`Σ_k E / (1 + r)^k`, where `E` is the energy consumed in a year. The grid-only case is the
+same with no new capacity. The saving series `G_k − C_k` gives payback (the first year
+its running sum turns non-negative) and IRR (its root, found by bisection). `O_k` is
+solved for sampled years and interpolated linearly between them.
+
 ## Certification — `validation/certify.py`
 
 The validator recomputes all of the above from the immutable `RunSpec` and the exported

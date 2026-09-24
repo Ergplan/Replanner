@@ -51,6 +51,16 @@ July outage is a solver test case, not a fact about any real site.
   licensee's share of each deposit), a money charge per kWh deposited, local hours in
   which nothing may be drawn, and a cap on each period's deposits as a share of that
   period's site load. Banking with nothing wheeled is refused.
+- The lifetime of a solved design (`energy_core/lifetime.py`). The design runs through
+  the study period at fixed capacities: panels degrade at each technology's rate,
+  battery cells fade at the calendar rate and are new again after replacement, and
+  prices, charges and O&M escalate at `opex_escalation`. Capital is a cash flow:
+  purchase at year 0, replacement at the end of each life, straight-line salvage at the
+  end. The same is done for grid supply alone, which gives lifetime savings, levelised
+  cost per kWh, payback and IRR. The first and last years, every fifth, and the years
+  either side of a replacement are solved and certified; the years between are
+  interpolated, and labelled as such. A year the design cannot serve is reported, not
+  priced.
 - Independent full-resolution certification, and a diagnostic relaxation that locates
   shortfalls in an infeasible scenario.
 
@@ -61,16 +71,18 @@ These **fail validation rather than being silently ignored**. The check is
 it again at submission so a bad scenario is refused immediately rather than failing as a
 job, and every problem is reported at once.
 
-- Multi-year horizons with staged expansion and year-on-year degradation. The schema
-  carries `ExpansionPhase` and `operating_years`, and the finance module has the
-  discounted-cash-flow machinery, but the model builder solves one operating year. A
-  one-year result is labelled as such and does not satisfy multi-year acceptance.
+- Optimising capacities across a multi-year horizon, and staged load growth. The
+  optimiser sizes against one operating year; the lifetime evaluation above runs that
+  design through the years but does not re-size it. `ExpansionPhase` and more than one
+  `operating_years` are refused.
 - Banking rules beyond those above: drawal restricted to the time-of-day slot the energy
   was deposited in, a cap on consumption from the licensee rather than on site load, and
   lapse credits that vary by period. There are no fields for these, so they cannot be
   set by mistake.
-- Monetising degradation through modelled replacement or augmentation cash flows. Only
-  the throughput-wear approximation is implemented.
+- Battery augmentation (adding cells part-way through a life to hold capacity) and
+  cycle-driven fade. The lifetime evaluation replaces cells at the end of their calendar
+  life and fades them by the calendar; throughput is priced by the wear charge, as in
+  the annual model.
 - A `step_mw` for which no whole number of units lies between the option's `min_mw` and
   `max_mw`.
 - Existing plant that is commissioned after the operating year starts, or retires within

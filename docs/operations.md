@@ -49,7 +49,16 @@ solver within a second instead of letting it finish unwanted work.
    solve. It takes a few minutes; the page shows elapsed time and fills in when the
    result is certified.
 3. **Optimise & explore** (`/`). Play through the year, and use Manual scenario to fix
-   capacities and see the premium over the optimum.
+   capacities and see the premium over the optimum. Download the 15-minute results or
+   the cost summary as CSV.
+4. **Over the life of the design.** Evaluate a certified design over its study period:
+   levelised cost per kWh against grid supply alone, lifetime saving, payback and IRR.
+   It solves about a dozen years, so it takes several minutes, and other solves wait
+   behind it.
+
+`/demo` is a separate, presentation-only page: a solar-cell gigafactory that switches to
+renewables in five seconds. Its figures are illustrative and fixed, and it says so; it
+needs neither the API nor the worker.
 
 Projects live in `runs/_projects/<id>/`: `inputs.json` and any uploaded series. Load,
 solar and wind output profiles, exchange prices and grid availability can each be

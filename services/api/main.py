@@ -67,7 +67,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:3210"],
 
 class ScenarioRequest(BaseModel):
     project_id: str = P.SAMPLE_ID
-    mode: str = Field(default="manual", pattern="^(manual|find_optimum)$")
+    mode: str = Field(default="manual", pattern="^(manual|find_optimum|lifetime)$")
     capacities: dict[str, float] | None = None
     baseline_run_id: str | None = None
 
@@ -291,6 +291,14 @@ def _csv_response(df: pd.DataFrame, filename: str) -> Response:
                     headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
+@app.get("/runs/{run_id}/lifetime")
+def get_lifetime(run_id: str):
+    p = J.run_dir(run_id) / "lifetime.json"
+    if not p.exists():
+        raise HTTPException(404, f"no lifetime evaluation {run_id}")
+    return json.loads(p.read_text())
+
+
 @app.get("/runs/{run_id}/export.csv")
 def export_dispatch(run_id: str):
     """Every solved 15-minute block, with local time beside UTC, for a spreadsheet."""
@@ -342,12 +350,21 @@ def export_summary(run_id: str):
 def submit(req: ScenarioRequest):
     if req.mode == "manual" and not req.capacities:
         raise HTTPException(400, "a manual scenario must carry capacities")
+    if req.mode == "lifetime":
+        # A lifetime is always of a design that has been solved and certified.
+        if not req.baseline_run_id:
+            raise HTTPException(400, "a lifetime evaluation needs the run whose design it evaluates")
+        base = _summary(req.baseline_run_id)
+        if not str(base.get("validation_status", "")).startswith("certified"):
+            raise HTTPException(400, "only a certified run's design can be evaluated over its life")
+        req.capacities = {k: v for k, v in base.get("capacities", {}).items()
+                          if not k.startswith("existing_")}
     # The worker runs the same check; running it here turns a job that would fail
     # minutes later into an immediate, readable refusal.
     inp = _inputs(req.project_id)
     year = P.operating_year(inp)
     problems = unsupported_input_problems(
-        inp, year, fixed_capacities=req.capacities if req.mode == "manual" else None)
+        inp, year, fixed_capacities=req.capacities if req.mode != "find_optimum" else None)
     if problems:
         raise HTTPException(400, {"unsupported_inputs": problems})
     active = [j for j in J.all_jobs() if j.status in ACTIVE and j.mode == req.mode
@@ -356,6 +373,12 @@ def submit(req: ScenarioRequest):
         # One optimum per set of inputs; a second click joins the solve already going.
         j = active[0]
         return {"job_id": j.job_id, "status": j.status}
+    if req.mode == "lifetime":
+        same = [j for j in active if j.baseline_run_id == req.baseline_run_id]
+        if same:
+            return {"job_id": same[0].job_id, "status": same[0].status}
+        job = J.new_job(req.project_id, req.mode, year, req.capacities, req.baseline_run_id)
+        return {"job_id": job.job_id, "status": job.status}
     for j in active:
         # A newer manual scenario makes the older ones obsolete. Left queued, each would
         # be solved in turn and the answer the user wants would arrive last.

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "packages" / "energy_core"))
 sys.path.insert(0, str(ROOT / "datasets" / "synthetic"))
 
-from energy_core import MODEL_VERSION  # noqa: E402
+from energy_core import MODEL_VERSION, lifetime  # noqa: E402
 from energy_core.optimization import build_spec, solve_year  # noqa: E402
 from energy_core.schemas.common import Mode  # noqa: E402
 from energy_core.validation import Tolerances, certify  # noqa: E402
@@ -20,9 +20,31 @@ import jobs as J  # noqa: E402
 import projects as P  # noqa: E402
 
 
+def execute_lifetime(job: J.Job, inputs, frame) -> None:
+    """Run a solved design through the study period; see energy_core.lifetime."""
+    res = lifetime.evaluate(inputs, frame, job.capacities or {}, year=job.year,
+                            model_version=MODEL_VERSION,
+                            progress=lambda m: J.update(job.job_id, message=f"solving {m}"))
+    run_id = f"lifetime-{job.job_id}"
+    d = J.run_dir(run_id)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "lifetime.json").write_text(json.dumps(res.as_dict(), indent=2, default=float))
+    (d / "summary.json").write_text(json.dumps({
+        "run_id": run_id, "job_id": job.job_id, "project_id": job.project_id,
+        "mode": "lifetime", "year": job.year, "status": "succeeded",
+        "baseline_run_id": job.baseline_run_id, "model_version": MODEL_VERSION,
+        "npv_design": res.npv_design, "levelised_design": res.levelised_design,
+        "problems": res.problems}, indent=2, default=float))
+    J.update(job.job_id, status=J.SUCCEEDED, run_id=run_id, finished_at=time.time(),
+             message="; ".join(res.problems))
+
+
 def execute(job: J.Job) -> None:
     inputs = P.load_inputs(job.project_id)
     frame = P.load_frame(job.project_id, job.year, inputs.project.timezone)
+    if job.mode == "lifetime":
+        execute_lifetime(job, inputs, frame)
+        return
     mode = Mode(job.mode)
     spec = build_spec(inputs, frame, job.year, mode=mode,
                       fixed_capacities=job.capacities, model_version=MODEL_VERSION)

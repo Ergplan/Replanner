@@ -54,6 +54,20 @@ export type ProjectMeta = {
   input_fingerprint: string | null;     // what a run on today's inputs is fingerprinted as
 };
 
+export type LifetimeYear = {
+  year: number; sampled: boolean; opex_design: number | null; opex_grid_only: number | null;
+  validation: string | null; grid_only_validation: string | null; note: string;
+};
+export type Lifetime = {
+  study_years: number; discount_rate: number; escalation: number; basis: string;
+  design: Record<string, number>; sampled_years: number[]; years: LifetimeYear[];
+  capex_year0: number; replacements: { year: number; item: string; inr: number }[];
+  salvage: number; annual_kwh: number;
+  npv_design: number | null; npv_grid_only: number | null;
+  levelised_design: number | null; levelised_grid_only: number | null;
+  payback_year: number | null; irr: number | null; problems: string[];
+};
+
 const base = '/api';
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const r = await fetch(`${base}${path}`, { signal, cache: 'no-store' });
@@ -70,6 +84,7 @@ export const api = {
   dispatch: (id: string, start: number, limit: number, signal?: AbortSignal) =>
     get<DispatchWindow>(`/runs/${id}/dispatch?start=${start}&limit=${limit}`, signal),
   daily: (id: string) => get<{ run_id: string; days: DayRow[] }>(`/runs/${id}/daily`),
+  lifetime: (id: string) => get<Lifetime>(`/runs/${id}/lifetime`),
   job: (id: string) => get<Job>(`/jobs/${id}`),
   jobs: (pid: string) => get<Job[]>(`/jobs?project_id=${q(pid)}`),
   submit: async (body: { project_id: string; mode: string; capacities?: Record<string, number>;

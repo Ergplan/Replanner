@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import IsoTwin, { Flows, Sizes } from '@/components/IsoTwin';
+import LifetimePanel from '@/components/LifetimePanel';
 import { CostBars, DayChart, MonthlyChart, SocChart, YearChart } from '@/components/Charts';
 import { ACTIVE_JOB, api, Block, DayRow, Job, ProjectMeta, RunSummary } from '@/lib/api';
 import { crore, inr, istDate, istLabel, mw, num, pct } from '@/lib/format';
@@ -64,6 +65,7 @@ export default function Page() {
     } catch (e) { setErr(String(e)); }
   }, []);
   const findOptimum = useCallback(() => startOptimum(pid), [pid, startOptimum]);
+  const refreshRuns = useCallback(() => { api.runs(pid).then(setRuns).catch(() => {}); }, [pid]);
 
   // ---- discover the certified optimum ----------------------------------------
   // Only an optimum solved on today's inputs is a baseline. One solved before the inputs
@@ -605,6 +607,12 @@ export default function Page() {
               </p>
             )}
           </div>
+
+          {shown && shown.mode !== 'lifetime' && (
+            <LifetimePanel pid={pid} run={shown} runs={runs}
+                           studyYears={Number((meta?.finance as { study_period_years?: number })?.study_period_years ?? 20)}
+                           onRuns={refreshRuns} />
+          )}
 
           <div className="card">
             <h3>Where the money goes</h3>
