@@ -32,6 +32,7 @@ export type DayRow = {
   day: string; load_mwh: number; renewable_mwh: number; import_utility_mwh: number;
   import_market_mwh: number; discharge_mwh: number; charge_mwh: number;
   curtailed_mwh: number; peak_import_mw: number; soc_min_mwh: number; soc_max_mwh: number;
+  banked_mwh?: number; drawn_mwh?: number;   // present when the run had banking columns
 };
 export type Job = {
   job_id: string; status: string; mode: string; run_id: string | null;

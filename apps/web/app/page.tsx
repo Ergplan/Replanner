@@ -223,14 +223,23 @@ export default function Page() {
   // ---- derived ------------------------------------------------------------------
   const block = rows[cursor];
   const noData = rows.length === 0;
+  const banking = days.some((d) => (d.banked_mwh ?? 0) > 0 || (d.drawn_mwh ?? 0) > 0);
+  const consumedMwh = days.reduce((a, d) => a + d.load_mwh, 0);
+  const perKwh = shown?.objective_inr_year != null && consumedMwh > 0
+    ? shown.objective_inr_year / (consumedMwh * 1000) : null;
   const flows: Flows = useMemo(() => {
     const v = (k: string) => num0(block?.[k]);
     const useCols = block ? Object.keys(block).filter((k) => k.startsWith('use_')) : [];
     const curtCols = block ? Object.keys(block).filter((k) => k.startsWith('curtail_')) : [];
     const roof = v('use_solar_roof_mw');
+    // Wheeled energy deposited in the bank never reaches the site in this block, so the
+    // open-access flows drawn into the plant are what is left after the deposit.
+    const oaSolar = v('use_solar_oa_mw'), oaWind = v('use_wind_oa_mw');
+    const wheeled = oaSolar + oaWind;
+    const keep = wheeled > 1e-9 ? Math.max(0, (wheeled - v('bank_in_mw')) / wheeled) : 1;
     return {
       loadMw: v('load_mw'), roofMw: roof,
-      oaSolarMw: v('use_solar_oa_mw'), oaWindMw: v('use_wind_oa_mw'),
+      oaSolarMw: oaSolar * keep, oaWindMw: oaWind * keep,
       importUtilityMw: v('import_utility_mw'), importMarketMw: v('import_market_mw'),
       exportMw: v('export_utility_mw') + v('export_market_mw'),
       chargeMw: v('battery_charge_mw'), dischargeMw: v('battery_discharge_mw'),
@@ -517,6 +526,11 @@ export default function Page() {
               ? inr(num0(block['import_utility_mw']) * 0.25 * num0(block['tariff_inr_per_mwh']), 0)
               : '—'} s="utility energy only" />
             <Kpi k="curtailed" v={mw(flows.curtailedMw)} s="renewable spilled" />
+            {banking && (
+              <Kpi k="bank" v={num0(block?.['bank_out_mw']) > 0.001 ? `out ${mw(num0(block?.['bank_out_mw']))}`
+                : num0(block?.['bank_in_mw']) > 0.001 ? `in ${mw(num0(block?.['bank_in_mw']))}` : 'idle'}
+                   s={`balance ${num(num0(block?.['bank_balance_mwh']), 1)} MWh`} />
+            )}
           </div>
           <p className="hint" style={{ marginTop: 8 }}>
             Interval cost is the utility energy charge for this block. Demand charges and
@@ -574,6 +588,16 @@ export default function Page() {
               </span></div>
             <div className="row"><span>Premium, per cent</span>
               <span className="n">{premiumPct == null ? 'unavailable' : pct(premiumPct, 2)}</span></div>
+            <div className="row"><span>Per kWh consumed</span>
+              <span className="n">{perKwh == null ? '—' : `₹${perKwh.toFixed(2)}/kWh`}</span></div>
+            {shown && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                <a className="act ghost" href={`/api/runs/${shown.run_id}/export.csv`} download
+                   style={{ padding: '6px 10px' }}>15-minute CSV</a>
+                <a className="act ghost" href={`/api/runs/${shown.run_id}/summary.csv`} download
+                   style={{ padding: '6px 10px' }}>Cost summary CSV</a>
+              </div>
+            )}
             {premium != null && premium < -1 && (
               <p className="hint" style={{ color: 'var(--red-600)' }}>
                 A manual scenario below a certified optimum means the two runs are not

@@ -12,7 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
-from fastapi import FastAPI, Form, HTTPException, Query, UploadFile
+from fastapi import FastAPI, Form, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -273,7 +273,69 @@ def daily(run_id: str):
         "soc_min_mwh": g["soc_end_mwh"].min().to_numpy(),
         "soc_max_mwh": g["soc_end_mwh"].max().to_numpy(),
     })
+    if "bank_in_mw" in df.columns:
+        out["banked_mwh"] = (g["bank_in_mw"].sum() * 0.25).to_numpy()
+        out["drawn_mwh"] = (g["bank_out_mw"].sum() * 0.25).to_numpy()
     return {"run_id": run_id, "days": json.loads(out.to_json(orient="records"))}
+
+
+def _run_tz(summary: dict) -> str:
+    try:
+        return P.load_inputs(summary.get("project_id", P.SAMPLE_ID)).project.timezone
+    except P.ProjectNotFound:
+        return "Asia/Kolkata"
+
+
+def _csv_response(df: pd.DataFrame, filename: str) -> Response:
+    return Response(df.to_csv(index=False), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.get("/runs/{run_id}/export.csv")
+def export_dispatch(run_id: str):
+    """Every solved 15-minute block, with local time beside UTC, for a spreadsheet."""
+    s = _summary(run_id)
+    p = J.run_dir(run_id) / "dispatch.parquet"
+    if not p.exists():
+        raise HTTPException(404, f"no dispatch for {run_id}")
+    df = pd.read_parquet(p)
+    ts = pd.DatetimeIndex(df["timestamp_utc"])
+    df.insert(0, "timestamp_local", ts.tz_convert(_run_tz(s)).strftime("%Y-%m-%d %H:%M"))
+    df["timestamp_utc"] = ts.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return _csv_response(df, f"{run_id}-15min.csv")
+
+
+@app.get("/runs/{run_id}/summary.csv")
+def export_summary(run_id: str):
+    """The cost ledger, per year and per kWh consumed, with the capacities and the
+    certification it rests on. Per-kWh figures divide by the energy the site consumed,
+    so they compare directly with a DISCOM tariff."""
+    s = _summary(run_id)
+    p = J.run_dir(run_id) / "dispatch.parquet"
+    d = pd.read_parquet(p) if p.exists() else None
+    consumed_kwh = float(d["served_load_mw"].sum() * 0.25 * 1000) if d is not None else 0.0
+    rows: list[tuple[str, str, float | str, str]] = []
+    for k, v in s.get("ledger", {}).items():
+        rows.append(("cost", k, v, "INR/yr"))
+        if consumed_kwh:
+            rows.append(("cost per kWh", k, v / consumed_kwh, "INR/kWh"))
+    for k, v in s.get("capacities", {}).items():
+        rows.append(("capacity", k, v, "MWh" if k.endswith("mwh") else "MW"))
+    if d is not None:
+        rows += [("energy", "consumed", consumed_kwh / 1000, "MWh/yr"),
+                 ("energy", "renewable used", float(d["renewable_used_mw"].sum() * 0.25), "MWh/yr"),
+                 ("energy", "utility import", float(d["import_utility_mw"].sum() * 0.25), "MWh/yr"),
+                 ("energy", "exchange import", float(d["import_market_mw"].sum() * 0.25), "MWh/yr")]
+        if "bank_in_mw" in d.columns and d["bank_in_mw"].abs().sum() > 0:
+            rows += [("energy", "banked", float(d["bank_in_mw"].sum() * 0.25), "MWh/yr"),
+                     ("energy", "drawn from bank", float(d["bank_out_mw"].sum() * 0.25), "MWh/yr"),
+                     ("energy", "lapsed", float(d["bank_lapse_mwh"].sum()), "MWh/yr")]
+    for k in ("mode", "status", "validation_status", "coverage", "gap", "input_fingerprint",
+              "model_version", "solver_version"):
+        if s.get(k) is not None:
+            rows.append(("run", k, s[k], ""))
+    return _csv_response(pd.DataFrame(rows, columns=["section", "item", "value", "unit"]),
+                         f"{run_id}-summary.csv")
 
 
 @app.post("/scenarios")

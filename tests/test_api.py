@@ -119,3 +119,25 @@ def test_any_series_can_be_replaced_and_reverted(client):
     assert rows["wind_remote_cf"]["source"] == "sample"
     assert client.post(f"/projects/{pid}/series/nonsense", files={"file": ("w.csv", csv)}
                        ).status_code == 404
+
+
+def test_a_run_downloads_as_csv(client, tmp_path):
+    rid = "find_optimum-test"
+    d = tmp_path / rid
+    d.mkdir()
+    t = pd.date_range("2026-01-01", periods=4, freq="15min", tz="Asia/Kolkata").tz_convert("UTC")
+    pd.DataFrame({"timestamp_utc": t, "load_mw": 2.0, "served_load_mw": 2.0,
+                  "renewable_used_mw": 0.5, "import_utility_mw": 1.5, "import_market_mw": 0.0,
+                  "bank_in_mw": 0.0, "bank_out_mw": 0.0, "bank_lapse_mwh": 0.0}
+                 ).to_parquet(d / "dispatch.parquet")
+    (d / "summary.json").write_text('{"run_id": "find_optimum-test", "mode": "find_optimum", '
+                                    '"ledger": {"utility_energy": 12000.0, "total_annual_cost": 12000.0},'
+                                    ' "capacities": {"bess_energy_mwh": 4.0}}')
+    r = client.get(f"/runs/{rid}/export.csv")
+    assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+    first = r.text.splitlines()[1]
+    assert first.startswith("2026-01-01 00:00,2025-12-31T18:30:00Z")        # IST beside UTC
+    summary = pd.read_csv(__import__("io").StringIO(client.get(f"/runs/{rid}/summary.csv").text))
+    per_kwh = summary[(summary.section == "cost per kWh") & (summary.item == "total_annual_cost")]
+    assert float(per_kwh.value.iloc[0]) == pytest.approx(12000.0 / 2000.0)  # 2 MW for an hour
+    assert "banked" not in set(summary.item)
