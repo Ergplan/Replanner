@@ -443,6 +443,7 @@ function Top({ pid }: { pid: string }) {
       <nav style={{ marginLeft: 'auto', display: 'flex', gap: 14 }}>
         <span className="eyebrow" style={{ color: 'var(--text-strong)' }}>1 · Setup</span>
         <a className="eyebrow" href={`/?project=${pid}`}>2 · Optimise &amp; explore →</a>
+        <a className="eyebrow" href="/demo">Client demo</a>
       </nav>
     </header>
   );

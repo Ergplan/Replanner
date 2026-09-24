@@ -313,6 +313,7 @@ export default function Page() {
         <nav style={{ marginLeft: 'auto', display: 'flex', gap: 14, alignItems: 'center' }}>
           <a className="eyebrow" href={`/setup?project=${pid}`}>1 · Setup</a>
           <span className="eyebrow" style={{ color: 'var(--text-strong)' }}>2 · Optimise &amp; explore</span>
+          <a className="eyebrow" href="/demo">Client demo</a>
           <span className="badge info">planning &amp; simulation twin</span>
           {meta?.illustrative_only && <span className="badge warn">synthetic data</span>}
         </nav>
